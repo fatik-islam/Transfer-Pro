@@ -1,0 +1,47 @@
+{
+  "name": "transpro-private-transfers",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "backend:current": "npx @insforge/cli current --json",
+    "backend:schema": "npx @insforge/cli db import insforge/schema.sql",
+    "backend:seed": "npx @insforge/cli db import insforge/seed.sql",
+    "backend:tables": "npx @insforge/cli db tables --json",
+    "postinstall": "prisma generate"
+  },
+  "dependencies": {
+    "@insforge/sdk": "^1.2.4",
+    "@prisma/client": "^6.6.0",
+    "@types/leaflet": "^1.9.21",
+    "bcryptjs": "^3.0.2",
+    "clsx": "^2.1.1",
+    "jose": "^6.0.10",
+    "leaflet": "^1.9.4",
+    "lucide-react": "^0.511.0",
+    "next": "^15.3.1",
+    "pdf-lib": "^1.17.1",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-leaflet": "^5.0.0",
+    "stripe": "^18.0.0",
+    "tailwind-merge": "^3.3.0",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.14.1",
+    "@types/react": "^19.1.2",
+    "@types/react-dom": "^19.1.2",
+    "autoprefixer": "^10.4.21",
+    "eslint": "^9.24.0",
+    "eslint-config-next": "^15.3.1",
+    "postcss": "^8.5.3",
+    "prisma": "^6.6.0",
+    "tailwindcss": "^3.4.17",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.3"
+  }
+}

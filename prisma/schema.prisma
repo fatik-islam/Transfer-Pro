@@ -1,0 +1,359 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  DRIVER
+  CUSTOMER
+}
+
+enum RouteMode {
+  FIXED
+  QUOTE
+}
+
+enum DriverStatus {
+  AVAILABLE
+  ON_TRIP
+  OFF_SHIFT
+}
+
+enum QuoteStatus {
+  PENDING
+  OFFER_SENT
+  ACCEPTED
+  DECLINED
+  EXPIRED
+}
+
+enum BookingStatus {
+  PENDING
+  PENDING_PAYMENT
+  CONFIRMED
+  ASSIGNED
+  IN_PROGRESS
+  ARRIVED
+  COMPLETED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  UNPAID
+  AUTHORIZED
+  PAID
+  REFUNDED
+}
+
+enum VehicleClass {
+  EXECUTIVE_SEDAN
+  BUSINESS_SUV
+  VIP_VAN
+  GROUP_SHUTTLE
+}
+
+enum NotificationChannel {
+  EMAIL
+  SMS
+  WHATSAPP
+}
+
+enum EmailVerificationPurpose {
+  SIGN_UP
+  EMAIL_CHANGE
+}
+
+enum PhoneVerificationPurpose {
+  SIGN_UP
+  PHONE_CHANGE
+}
+
+model User {
+  id            String           @id @default(cuid())
+  role          UserRole
+  email         String           @unique
+  pendingEmail  String?          @unique
+  emailVerifiedAt DateTime?
+  googleSub     String?          @unique
+  passwordHash  String
+  name          String
+  phone         String?
+  phoneCountryIso String?
+  pendingPhone  String?
+  pendingPhoneCountryIso String?
+  phoneVerifiedAt DateTime?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  customer      CustomerProfile?
+  driver        DriverProfile?
+  quotes        RideQuote[]
+  bookings      Booking[]        @relation("CustomerBookings")
+  assignments   Booking[]        @relation("DriverAssignments")
+  notifications Notification[]
+  invoices      Invoice[]
+  auditLogs     AuditLog[]       @relation("AuditActor")
+  passwordResetTokens PasswordResetToken[]
+  emailVerificationTokens EmailVerificationToken[]
+  phoneVerificationCodes PhoneVerificationCode[]
+}
+
+model CustomerProfile {
+  id               String   @id @default(cuid())
+  userId           String   @unique
+  companyName      String?
+  billingAddress   String?
+  preferredChannel String?
+  loyaltyTier      String?
+  notes            String?
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model DriverProfile {
+  id            String       @id @default(cuid())
+  userId        String       @unique
+  licenseNumber String?
+  baseCity      String
+  status        DriverStatus @default(AVAILABLE)
+  rating        Float        @default(5)
+  bio           String?
+  user          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  vehicles      Vehicle[]
+}
+
+model Vehicle {
+  id              String         @id @default(cuid())
+  slug            String         @unique
+  name            String
+  vehicleClass    VehicleClass
+  seats           Int
+  luggage         Int
+  basePriceCents  Int
+  currency        String         @default("CAD")
+  summary         String
+  features        String[]
+  active          Boolean        @default(true)
+  image           String?
+  driverId        String?
+  driver          DriverProfile? @relation(fields: [driverId], references: [id], onDelete: SetNull)
+  routePrices     RoutePrice[]
+  bookings        Booking[]
+}
+
+model Route {
+  id            String       @id @default(cuid())
+  slug          String       @unique
+  origin        String
+  destination   String
+  distanceKm    Int
+  durationMin   Int
+  mode          RouteMode
+  active        Boolean      @default(true)
+  summary       String
+  seoTitle      String?
+  seoDescription String?
+  routePrices   RoutePrice[]
+  bookings      Booking[]
+  quotes        RideQuote[]
+}
+
+model RoutePrice {
+  id           String  @id @default(cuid())
+  routeId      String
+  vehicleId    String
+  oneWayCents  Int
+  returnCents  Int?
+  currency     String  @default("CAD")
+  depositCents Int?
+  route        Route   @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  vehicle      Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@unique([routeId, vehicleId])
+}
+
+model RideQuote {
+  id                String      @id @default(cuid())
+  reference         String      @unique
+  customerId        String
+  routeId           String?
+  status            QuoteStatus @default(PENDING)
+  pickupAt          DateTime
+  passengerName     String
+  passengerEmail    String
+  passengerPhone    String
+  passengers        Int
+  luggage           Int
+  notes             String?
+  requestedVehicle  String?
+  offerCents        Int?
+  currency          String      @default("CAD")
+  expiresAt         DateTime?
+  createdAt         DateTime    @default(now())
+  customer          User        @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  route             Route?      @relation(fields: [routeId], references: [id], onDelete: SetNull)
+  booking           Booking?
+}
+
+model Booking {
+  id                 String         @id @default(cuid())
+  reference          String         @unique
+  customerId         String
+  driverId           String?
+  routeId            String?
+  vehicleId          String?
+  quoteId            String?        @unique
+  status             BookingStatus  @default(PENDING_PAYMENT)
+  paymentStatus      PaymentStatus  @default(UNPAID)
+  pickupAt           DateTime
+  originLabel        String
+  destinationLabel   String
+  pickupAddress      String
+  destinationAddress String
+  passengerName      String
+  passengerEmail     String
+  passengerPhone     String
+  passengers         Int
+  luggage            Int
+  childSeats         Int            @default(0)
+  specialInstructions String?
+  flightNumber       String?
+  meetAndGreet       Boolean        @default(false)
+  paymentMethod      String         @default("STRIPE")
+  pickupLatitude     Float?
+  pickupLongitude    Float?
+  destinationLatitude Float?
+  destinationLongitude Float?
+  distanceKm         Float?
+  distanceSource     String?
+  pricingRegion      String?
+  pricingTierLabel   String?
+  ratePerKmCents     Int?
+  pickupFeeCents     Int?
+  oneWaySubtotalCents Int?
+  roundTrip          Boolean        @default(false)
+  roundTripDiscountCents Int?
+  urgentService      Boolean        @default(false)
+  urgentSurchargeCents Int?
+  tipCents           Int            @default(0)
+  tipPaymentStatus   PaymentStatus  @default(UNPAID)
+  tipProviderRef     String?
+  tipPaidAt          DateTime?
+  pricingBreakdown   Json?
+  totalCents         Int
+  depositCents       Int?
+  currency           String         @default("CAD")
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+  customer           User           @relation("CustomerBookings", fields: [customerId], references: [id], onDelete: Cascade)
+  driver             User?          @relation("DriverAssignments", fields: [driverId], references: [id], onDelete: SetNull)
+  route              Route?         @relation(fields: [routeId], references: [id], onDelete: SetNull)
+  vehicle            Vehicle?       @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+  quote              RideQuote?     @relation(fields: [quoteId], references: [id], onDelete: SetNull)
+  stops              BookingStop[]
+  invoice            Invoice?
+  payment            PaymentTransaction?
+  notifications      Notification[]
+}
+
+model BookingStop {
+  id         String   @id @default(cuid())
+  bookingId  String
+  sequence   Int
+  label      String
+  address    String
+  booking    Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+}
+
+model Invoice {
+  id             String   @id @default(cuid())
+  number         String   @unique
+  bookingId      String   @unique
+  customerId     String
+  subtotalCents  Int
+  taxCents       Int      @default(0)
+  totalCents     Int
+  currency       String   @default("CAD")
+  issuedAt       DateTime @default(now())
+  dueAt          DateTime?
+  paidAt         DateTime?
+  pdfUrl         String?
+  booking        Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  customer       User     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+}
+
+model PaymentTransaction {
+  id             String        @id @default(cuid())
+  bookingId      String        @unique
+  provider       String
+  providerRef    String?
+  amountCents    Int
+  currency       String        @default("CAD")
+  status         PaymentStatus
+  capturedAt     DateTime?
+  createdAt      DateTime      @default(now())
+  booking        Booking       @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+}
+
+model Notification {
+  id           String              @id @default(cuid())
+  bookingId    String?
+  userId       String?
+  channel      NotificationChannel
+  templateKey  String
+  subject      String
+  body         String
+  sentAt       DateTime?
+  createdAt    DateTime            @default(now())
+  booking      Booking?            @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  user         User?               @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  entityType String
+  entityId   String
+  action     String
+  payload    Json?
+  createdAt  DateTime @default(now())
+  actor      User?    @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+}
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  userId    String
+  tokenHash String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model EmailVerificationToken {
+  id        String                   @id @default(cuid())
+  userId    String
+  tokenHash String                   @unique
+  email     String
+  purpose   EmailVerificationPurpose
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime                 @default(now())
+  user      User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model PhoneVerificationCode {
+  id              String                    @id @default(cuid())
+  userId          String
+  codeHash        String                    @unique
+  phone           String
+  phoneCountryIso String
+  purpose         PhoneVerificationPurpose
+  expiresAt       DateTime
+  usedAt          DateTime?
+  createdAt       DateTime                  @default(now())
+  user            User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
