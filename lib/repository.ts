@@ -5,7 +5,6 @@ import { unstable_cache, unstable_noStore as noStore } from "next/cache";
 
 import { createInsForgeServerClient, isInsForgeConfigured, unwrapInsForgeResult } from "@/lib/insforge";
 import {
-  demoUsers,
   dashboardBookings,
   dashboardQuotes,
   driverCards,
@@ -13,6 +12,7 @@ import {
   invoiceRecords,
   routeCatalog
 } from "@/lib/site-data";
+import { demoUsers } from "@/lib/demo-users";
 import { offerMatchesInput, verifyPricingOffer } from "@/lib/offers";
 import { buildPhoneNumber, normalizePhoneCountryIso } from "@/lib/phone";
 import { parseCoordinatesString } from "@/lib/pricing";
@@ -50,6 +50,7 @@ type DbUser = {
   phoneVerifiedAt?: string | null;
   createdAt: string;
   updatedAt: string;
+  mustChangePassword?: boolean;
 };
 
 type DbCustomerProfile = {
@@ -573,7 +574,7 @@ async function resolveCustomerId(email: string, name: string, phone: string, act
   await unwrapInsForgeResult(
     insforge.database
       .from("User")
-      .insert({
+      .insert([{
         id: userId,
         email: normalizedEmail,
         name,
@@ -581,17 +582,17 @@ async function resolveCustomerId(email: string, name: string, phone: string, act
         role: "CUSTOMER",
         passwordHash: await bcrypt.hash(crypto.randomUUID(), 8),
         updatedAt: now
-      })
+      }])
       .select("id")
       .single(),
     "Create customer"
   );
 
   await unwrapInsForgeResult(
-    insforge.database.from("CustomerProfile").insert({
+    insforge.database.from("CustomerProfile").insert([{
       id: `customer_${crypto.randomUUID()}`,
       userId
-    }),
+    }]),
     "Create customer profile"
   );
 
@@ -1155,14 +1156,14 @@ async function writeBookingAudit(params: {
 
   const insforge = createInsForgeServerClient();
   await unwrapInsForgeResult(
-    insforge.database.from("AuditLog").insert({
+    insforge.database.from("AuditLog").insert([{
       id: `audit_${crypto.randomUUID()}`,
       actorId: params.actorId ?? null,
       entityType: "Booking",
       entityId: params.entityId,
       action: params.action,
       payload: params.payload ?? {}
-    }),
+    }]),
     "Create booking audit log"
   );
 }
@@ -1238,7 +1239,7 @@ export async function createBooking(input: BookingInput, actor?: SessionUser | n
   const booking = await unwrapInsForgeResult(
     insforge.database
       .from("Booking")
-      .insert({
+      .insert([{
         id: bookingId,
         reference,
         customerId,
@@ -1281,7 +1282,7 @@ export async function createBooking(input: BookingInput, actor?: SessionUser | n
         totalCents: Math.round(total * 100),
         currency: pricing.currency,
         updatedAt: new Date().toISOString()
-      })
+      }])
       .select("id,reference")
       .single(),
     "Create booking"
@@ -1336,7 +1337,7 @@ export async function createQuote(input: QuoteInput, actor?: SessionUser | null)
   const quote = await unwrapInsForgeResult(
     insforge.database
       .from("RideQuote")
-      .insert({
+      .insert([{
         id: `quote_${crypto.randomUUID()}`,
         reference,
         customerId,
@@ -1348,7 +1349,7 @@ export async function createQuote(input: QuoteInput, actor?: SessionUser | null)
         luggage: input.luggage,
         requestedVehicle: input.requestedVehicle || null,
         notes: noteParts.join("\n")
-      })
+      }])
       .select("id,reference")
       .single(),
     "Create quote"
@@ -1363,6 +1364,24 @@ export async function createQuote(input: QuoteInput, actor?: SessionUser | null)
 function isBookingStatus(value: string): value is BookingRecord["status"] {
   return ["PENDING", "PENDING_PAYMENT", "CONFIRMED", "ASSIGNED", "IN_PROGRESS", "ARRIVED", "COMPLETED", "CANCELLED"].includes(value);
 }
+
+const bookingStatusTransitions: Record<BookingRecord["status"], BookingRecord["status"][]> = {
+  PENDING: ["PENDING_PAYMENT", "CONFIRMED", "CANCELLED"],
+  PENDING_PAYMENT: ["CONFIRMED", "CANCELLED"],
+  CONFIRMED: ["ASSIGNED", "CANCELLED"],
+  ASSIGNED: ["IN_PROGRESS", "ARRIVED", "CANCELLED"],
+  IN_PROGRESS: ["ARRIVED", "COMPLETED", "CANCELLED"],
+  ARRIVED: ["IN_PROGRESS", "COMPLETED", "CANCELLED"],
+  COMPLETED: [],
+  CANCELLED: []
+};
+
+const driverStatusTransitions = new Set<BookingRecord["status"]>([
+  "IN_PROGRESS",
+  "ARRIVED",
+  "COMPLETED",
+  "CANCELLED"
+]);
 
 export async function updateBookingStatus(
   bookingId: string,
@@ -1379,9 +1398,9 @@ export async function updateBookingStatus(
 
   const insforge = createInsForgeServerClient();
   const booking = (await unwrapInsForgeResult(
-    insforge.database.from("Booking").select("id,driverId").eq("id", bookingId).maybeSingle(),
+    insforge.database.from("Booking").select("id,driverId,status").eq("id", bookingId).maybeSingle(),
     "Load booking before status update"
-  )) as Pick<DbBooking, "id" | "driverId"> | null;
+  )) as Pick<DbBooking, "id" | "driverId" | "status"> | null;
 
   if (!booking) {
     throw new Error("Booking was not found.");
@@ -1389,6 +1408,18 @@ export async function updateBookingStatus(
 
   if (actor.role === "DRIVER" && booking.driverId !== actor.id) {
     throw new Error("Drivers can only update rides they have accepted.");
+  }
+
+  if (status === booking.status) {
+    return;
+  }
+
+  if (!bookingStatusTransitions[booking.status].includes(status)) {
+    throw new Error(`Booking cannot move from ${booking.status} to ${status}.`);
+  }
+
+  if (actor.role === "DRIVER" && !driverStatusTransitions.has(status)) {
+    throw new Error("Drivers cannot make this booking status change.");
   }
 
   await unwrapInsForgeResult(
@@ -1611,7 +1642,7 @@ export async function createDriver(
   const phone = buildPhoneNumber(phoneCountryIso, input.phoneNationalNumber);
 
   await unwrapInsForgeResult(
-    insforge.database.from("User").insert({
+    insforge.database.from("User").insert([{
       id: userId,
       role: "DRIVER",
       name: input.name,
@@ -1619,18 +1650,19 @@ export async function createDriver(
       phone,
       phoneCountryIso,
       passwordHash,
+      mustChangePassword: true,
       updatedAt: now
-    }),
+    }]),
     "Create driver user"
   );
 
   await unwrapInsForgeResult(
-    insforge.database.from("DriverProfile").insert({
+    insforge.database.from("DriverProfile").insert([{
       id: `driver_${crypto.randomUUID()}`,
       userId,
       baseCity: input.baseCity,
       status: "AVAILABLE"
-    }),
+    }]),
     "Create driver profile"
   );
 
@@ -1692,6 +1724,17 @@ export async function markBookingPaid(
     throw new Error("Booking was not found.");
   }
 
+  const normalizedProvider = provider.trim().toUpperCase();
+  const allowedProviders = new Set(["CASH", "BANK_TRANSFER", "INVOICE", "MANUAL"]);
+
+  if (!allowedProviders.has(normalizedProvider)) {
+    throw new Error("Unsupported manual payment provider.");
+  }
+
+  if (booking.paymentStatus === "PAID") {
+    return;
+  }
+
   if (actor.role === "DRIVER") {
     const assigned = (await unwrapInsForgeResult(
       insforge.database.from("Booking").select("driverId").eq("id", bookingId).maybeSingle(),
@@ -1701,6 +1744,10 @@ export async function markBookingPaid(
     if (assigned?.driverId !== actor.id) {
       throw new Error("Drivers can only mark their own rides as paid.");
     }
+
+    if (booking.status !== "COMPLETED" || normalizedProvider !== "CASH") {
+      throw new Error("Drivers can only record cash after completing their assigned ride.");
+    }
   }
 
   await applyStripePaymentUpdate({
@@ -1709,10 +1756,10 @@ export async function markBookingPaid(
     amountCents: booking.totalCents,
     currency: booking.currency,
     status: "PAID",
-    provider,
+    provider: normalizedProvider,
     capturedAt: new Date().toISOString(),
     eventType: "manual.payment_recorded",
-    payload: { provider, actorId: actor.id }
+    payload: { provider: normalizedProvider, actorId: actor.id }
   });
 }
 
@@ -1835,6 +1882,13 @@ export async function applyStripePaymentUpdate(
   const provider = input.provider ?? "STRIPE";
   const capturedAt = input.status === "PAID" ? input.capturedAt ?? existingPayment?.capturedAt ?? now : null;
 
+  if (
+    (input.status === "PAID" || input.status === "AUTHORIZED") &&
+    (amountCents !== booking.totalCents || currency !== booking.currency.toUpperCase())
+  ) {
+    throw new Error("Stripe payment amount or currency does not match the booking total.");
+  }
+
   if (existingPayment) {
     await unwrapInsForgeResult(
       insforge.database
@@ -1852,7 +1906,7 @@ export async function applyStripePaymentUpdate(
     );
   } else {
     await unwrapInsForgeResult(
-      insforge.database.from("PaymentTransaction").insert({
+      insforge.database.from("PaymentTransaction").insert([{
         id: `payment_${crypto.randomUUID()}`,
         bookingId: booking.id,
         provider,
@@ -1861,7 +1915,7 @@ export async function applyStripePaymentUpdate(
         currency,
         status: input.status,
         capturedAt
-      }),
+      }]),
       "Create payment transaction"
     );
   }
@@ -1910,17 +1964,17 @@ export async function applyStripePaymentUpdate(
     );
   } else {
     await unwrapInsForgeResult(
-      insforge.database.from("Invoice").insert({
+      insforge.database.from("Invoice").insert([{
         id: `invoice_${crypto.randomUUID()}`,
         issuedAt: now,
         ...invoicePayload
-      }),
+      }]),
       "Create invoice"
     );
   }
 
   await unwrapInsForgeResult(
-    insforge.database.from("AuditLog").insert({
+    insforge.database.from("AuditLog").insert([{
       id: `audit_${crypto.randomUUID()}`,
       actorId: null,
       entityType: "Booking",
@@ -1935,7 +1989,7 @@ export async function applyStripePaymentUpdate(
         eventType: input.eventType,
         ...input.payload
       }
-    }),
+    }]),
     "Create payment audit log"
   );
 
@@ -2010,7 +2064,7 @@ export async function applyTipPaymentUpdate(input: {
   );
 
   await unwrapInsForgeResult(
-    insforge.database.from("AuditLog").insert({
+    insforge.database.from("AuditLog").insert([{
       id: `audit_${crypto.randomUUID()}`,
       actorId: null,
       entityType: "Booking",
@@ -2023,7 +2077,7 @@ export async function applyTipPaymentUpdate(input: {
         paymentStatus: input.status,
         ...input.payload
       }
-    }),
+    }]),
     "Create tip payment audit log"
   );
 
@@ -2034,4 +2088,43 @@ export async function applyTipPaymentUpdate(input: {
     customerId: booking.customerId,
     paymentStatus: input.status
   };
+}
+
+export async function claimStripeEvent(eventId: string, eventType: string) {
+  if (!isInsForgeConfigured()) {
+    return true;
+  }
+
+  const insforge = createInsForgeServerClient();
+  const existing = await unwrapInsForgeResult(
+    insforge.database.from("PaymentEvent").select("id").eq("eventId", eventId).maybeSingle(),
+    "Check Stripe event"
+  );
+
+  if (existing) {
+    return false;
+  }
+
+  await unwrapInsForgeResult(
+    insforge.database.from("PaymentEvent").insert([{
+      id: `payment_event_${crypto.randomUUID()}`,
+      eventId,
+      eventType
+    }]),
+    "Claim Stripe event"
+  );
+
+  return true;
+}
+
+export async function releaseStripeEvent(eventId: string) {
+  if (!isInsForgeConfigured()) {
+    return;
+  }
+
+  const insforge = createInsForgeServerClient();
+  await unwrapInsForgeResult(
+    insforge.database.from("PaymentEvent").delete().eq("eventId", eventId),
+    "Release failed Stripe event"
+  );
 }

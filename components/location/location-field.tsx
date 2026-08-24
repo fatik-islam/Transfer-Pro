@@ -51,13 +51,9 @@ async function reverseLookup(coordinates: LocationCoordinates): Promise<Resolved
     return cached;
   }
 
-  const search = new URLSearchParams({
-    format: "jsonv2",
-    lat: String(coordinates.lat),
-    lon: String(coordinates.lng)
-  });
+  const search = new URLSearchParams({ lat: String(coordinates.lat), lng: String(coordinates.lng) });
 
-  const response = await fetch(`https://nominatim.openstreetmap.org/reverse?${search.toString()}`);
+  const response = await fetch(`/api/locations/reverse?${search.toString()}`);
 
   if (!response.ok) {
     throw new Error("Reverse lookup failed");
@@ -162,13 +158,8 @@ export function LocationField({
     const timeout = window.setTimeout(async () => {
       try {
         setSearching(true);
-        const search = new URLSearchParams({
-          format: "jsonv2",
-          q: query,
-          limit: "5",
-          addressdetails: "1"
-        });
-        const response = await fetch(`https://nominatim.openstreetmap.org/search?${search.toString()}`, {
+        const search = new URLSearchParams({ q: query });
+        const response = await fetch(`/api/locations/search?${search.toString()}`, {
           signal: controller.signal
         });
 
@@ -286,7 +277,7 @@ export function LocationField({
   }
 
   return (
-    <div ref={wrapperRef} className="relative">
+    <div ref={wrapperRef} className="relative z-40 focus-within:z-[90]">
       {inputName ? <input type="hidden" name={inputName} value={value} /> : null}
       {coordinatesName ? (
         <input
@@ -303,6 +294,10 @@ export function LocationField({
         <div className={cn("flex items-center gap-2 px-3 py-3", compact && "gap-3 px-0 py-0")}>
           <MapPin className={cn("h-4 w-4 shrink-0 text-slate", compact && "h-5 w-5 text-slate/80")} />
           <Input
+            aria-label={label ?? placeholder}
+            aria-autocomplete="list"
+            aria-expanded={searching || results.length > 0}
+            role="combobox"
             value={value}
             onChange={(event) => {
               onValueChange(event.target.value);
@@ -344,6 +339,7 @@ export function LocationField({
                 compact &&
                   "h-10 w-10 border border-white/58 bg-white/86 px-0 text-ink/80 shadow-[0_14px_34px_rgba(8,20,38,0.08)] backdrop-blur-xl hover:bg-white hover:text-ink"
               )}
+              aria-label={compact ? "Use current location" : undefined}
             >
               {locating ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <LocateFixed className="h-4 w-4" />}
               {!compact ? "Current" : null}
@@ -359,6 +355,7 @@ export function LocationField({
               compact &&
                 "h-10 w-10 border border-white/58 bg-white/86 px-0 text-ink/80 shadow-[0_14px_34px_rgba(8,20,38,0.08)] backdrop-blur-xl hover:bg-white hover:text-ink"
             )}
+            aria-label={compact ? "Choose location on map" : undefined}
           >
             <MapPinned className="h-4 w-4" />
             {!compact ? "Pin" : null}
@@ -366,17 +363,19 @@ export function LocationField({
         </div>
 
         {searching ? (
-          <div className="glass-panel-strong absolute inset-x-0 top-full z-30 mt-2 rounded-[1.5rem] px-4 py-3 text-sm text-slate">
+          <div className="glass-panel-strong absolute inset-x-0 top-full z-[100] mt-2 rounded-[1.5rem] px-4 py-3 text-sm text-slate" role="status">
             Searching places...
           </div>
         ) : null}
 
         {!searching && results.length > 0 ? (
-          <div className="glass-panel-strong absolute inset-x-0 top-full z-30 mt-2 overflow-hidden rounded-[1.5rem]">
+          <div className="glass-panel-strong absolute inset-x-0 top-full z-[100] mt-2 overflow-hidden rounded-[1.5rem]" role="listbox">
             {results.map((result) => (
               <button
                 key={result.place_id}
                 type="button"
+                role="option"
+                aria-selected="false"
                 onClick={() =>
                   applySelection(
                     result.display_name,
@@ -409,8 +408,8 @@ export function LocationField({
       {compact && status ? <p className="mt-2 text-xs text-cloud/58">{status}</p> : null}
 
       {mapOpen ? (
-        <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/60 px-3 py-3 md:items-center md:px-4 md:py-8">
-          <div className="page-card max-h-[92svh] w-full max-w-3xl overflow-y-auto p-5 md:p-6">
+        <div className="fixed inset-0 z-[120] flex items-end justify-center bg-black/60 px-3 py-3 md:items-center md:px-4 md:py-8">
+          <div className="page-card max-h-[92svh] w-full max-w-3xl overflow-y-auto p-5 md:p-6" role="dialog" aria-modal="true" aria-label="Choose location on map">
             <div className="flex items-start justify-between gap-6">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.28em] text-copper">Map pin</p>

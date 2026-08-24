@@ -5,7 +5,9 @@ import "leaflet/dist/leaflet.css";
 
 import { SiteFooter } from "@/components/marketing/site-footer";
 import { SiteHeader } from "@/components/marketing/site-header";
+import { PerformanceMonitor } from "@/components/analytics/performance-monitor";
 import { brand } from "@/lib/site-data";
+import { getAppUrl } from "@/lib/app-config";
 import "@/app/globals.css";
 
 const manrope = Manrope({
@@ -20,7 +22,7 @@ const cormorantGaramond = Cormorant_Garamond({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"),
+  metadataBase: new URL(getAppUrl()),
   title: {
     default: `${brand.name} | Private transfer booking platform`,
     template: `%s | ${brand.name}`
@@ -36,6 +38,7 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
   return (
     <html lang="en" className={`${manrope.variable} ${cormorantGaramond.variable}`}>
       <body className="bg-cloud font-sans text-ink antialiased">
+        <PerformanceMonitor />
         <SiteHeader />
         {children}
         <SiteFooter />

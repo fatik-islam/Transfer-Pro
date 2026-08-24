@@ -6,7 +6,16 @@ import type { LocationCoordinates, TransferPricingQuote } from "@/lib/types";
 
 const OFFER_TTL_MINUTES = 30;
 const encoder = new TextEncoder();
-const secret = encoder.encode(process.env.JWT_SECRET ?? "transpro-development-secret-change-me");
+
+function offerSecret() {
+  const value = process.env.JWT_SECRET?.trim();
+
+  if (!value && process.env.NODE_ENV === "production") {
+    throw new Error("JWT_SECRET must be configured in production.");
+  }
+
+  return encoder.encode(value || "transpro-local-development-only");
+}
 
 export type LockedOfferInput = {
   pickupCoordinates: LocationCoordinates;
@@ -57,7 +66,7 @@ export async function signPricingOffer(input: LockedOfferInput, quote: TransferP
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime(`${OFFER_TTL_MINUTES}m`)
-    .sign(secret);
+    .sign(offerSecret());
 
   return {
     ...offer.quote,
@@ -66,7 +75,7 @@ export async function signPricingOffer(input: LockedOfferInput, quote: TransferP
 }
 
 export async function verifyPricingOffer(token: string) {
-  const result = await jwtVerify(token, secret);
+  const result = await jwtVerify(token, offerSecret());
   const offer = result.payload.offer as LockedPricingOffer | undefined;
 
   if (!offer?.input || !offer.quote) {

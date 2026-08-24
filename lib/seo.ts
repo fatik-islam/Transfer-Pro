@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
 import { brand } from "@/lib/site-data";
+import { getAppUrl } from "@/lib/app-config";
 
 interface MetadataInput {
   title: string;
@@ -9,8 +10,7 @@ interface MetadataInput {
 }
 
 export function buildMetadata({ title, description, path = "/" }: MetadataInput): Metadata {
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-  const url = new URL(path, baseUrl);
+  const url = new URL(path, getAppUrl());
 
   return {
     title,

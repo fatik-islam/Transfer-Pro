@@ -5,6 +5,8 @@ function resolveNotice(notice?: string) {
   switch (notice) {
     case "email-change-verified":
       return "Your new email address is now active on this account.";
+    case "password-required":
+      return "For security, replace your temporary password before continuing.";
     default:
       return undefined;
   }

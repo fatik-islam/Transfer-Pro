@@ -1,7 +1,6 @@
 import Link from "next/link";
 
 import { SignInForm } from "@/components/auth/sign-in-form";
-import { isInsForgeConfigured } from "@/lib/insforge";
 import { buildMetadata } from "@/lib/seo";
 
 export const metadata = buildMetadata({
@@ -40,7 +39,7 @@ function resolveNotice(notice?: string) {
       };
     case "account-deleted":
       return {
-        text: "Account deleted permanently.",
+        text: "Account closed and personal details anonymized.",
         tone: "success" as const
       };
     default:
@@ -54,7 +53,6 @@ export default async function SignInPage({
   searchParams: Promise<{ notice?: string }>;
 }) {
   const { notice } = await searchParams;
-  const liveAuthConfigured = isInsForgeConfigured();
 
   return (
     <main className="mx-auto max-w-7xl px-5 py-16 md:px-8">
@@ -63,9 +61,7 @@ export default async function SignInPage({
           <p className="text-xs font-semibold uppercase tracking-[0.32em] text-copper">Accounts</p>
           <h1 className="mt-5 font-display text-5xl leading-none">Customer, driver, and admin views share one login system.</h1>
           <p className="mt-5 text-base leading-8 text-cloud/72">
-            {liveAuthConfigured
-              ? "Use your verified email address to sign in. Google sign-in, password recovery, and saved mobile numbers are supported from the same account system."
-              : "The demo auth flow uses signed JWT cookies. In production you can keep this structure and layer MFA, magic links, or SSO on top."}
+            Use your verified email address to sign in. Google sign-in, password recovery, and saved mobile numbers are supported from the same secure account system.
           </p>
           <p className="mt-8 text-sm text-cloud/60">
             Need a new customer account?{" "}
@@ -75,10 +71,7 @@ export default async function SignInPage({
             .
           </p>
         </div>
-        <SignInForm
-          notice={resolveNotice(notice)}
-          showDemoCredentials={!liveAuthConfigured}
-        />
+        <SignInForm notice={resolveNotice(notice)} />
       </div>
     </main>
   );

@@ -147,6 +147,8 @@ export interface SessionUser {
   role: UserRole;
   email: string;
   name: string;
+  sessionVersion: number;
+  mustChangePassword: boolean;
 }
 
 export interface AccountProfile {
@@ -161,6 +163,7 @@ export interface AccountProfile {
   pendingEmail?: string;
   emailVerifiedAt?: string | null;
   phoneVerifiedAt?: string | null;
+  mustChangePassword?: boolean;
 }
 
 export interface LocationCoordinates {

@@ -37,6 +37,8 @@ import {
   updateBookingStatus
 } from "@/lib/repository";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
+import { getAppUrl } from "@/lib/app-config";
+import { enforceRateLimit, rateLimitMessage } from "@/lib/rate-limit";
 import {
   accountDeleteSchema,
   bookingSchema,
@@ -50,7 +52,28 @@ import {
   signUpSchema
 } from "@/lib/validation";
 
+async function actionRateLimit(
+  scope: string,
+  options: { limit: number; windowSeconds: number }
+): Promise<ActionState | null> {
+  try {
+    await enforceRateLimit(scope, options);
+    return null;
+  } catch (error) {
+    const message = rateLimitMessage(error);
+
+    if (message) {
+      return { ok: false, message };
+    }
+
+    throw error;
+  }
+}
+
 export async function signInAction(_: ActionState, formData: FormData): Promise<ActionState> {
+  const limited = await actionRateLimit("auth.sign-in", { limit: 8, windowSeconds: 900 });
+  if (limited) return limited;
+
   const parsed = signInSchema.safeParse({
     email: formData.get("email"),
     password: formData.get("password")
@@ -80,10 +103,13 @@ export async function signInAction(_: ActionState, formData: FormData): Promise<
   }
 
   await setSession(result.user);
-  redirect("/dashboard");
+  redirect(result.user.mustChangePassword ? "/dashboard/settings?notice=password-required" : "/dashboard");
 }
 
 export async function signUpAction(_: ActionState, formData: FormData): Promise<ActionState> {
+  const limited = await actionRateLimit("auth.sign-up", { limit: 4, windowSeconds: 3600 });
+  if (limited) return limited;
+
   const parsed = signUpSchema.safeParse({
     name: formData.get("name"),
     email: formData.get("email"),
@@ -96,7 +122,7 @@ export async function signUpAction(_: ActionState, formData: FormData): Promise<
     return {
       ok: false,
       message:
-        "Enter name, email, mobile number, and a password with at least 8 characters."
+        "Use a 10+ character password with uppercase, lowercase, and a number."
     };
   }
 
@@ -122,6 +148,9 @@ export async function createBookingAction(
   _: ActionState,
   formData: FormData
 ): Promise<ActionState> {
+  const limited = await actionRateLimit("booking.create", { limit: 8, windowSeconds: 3600 });
+  if (limited) return limited;
+
   const parsed = bookingSchema.safeParse({
     routeSlug: formData.get("routeSlug") ?? "",
     vehicleSlug: formData.get("vehicleSlug"),
@@ -277,7 +306,7 @@ function requireAdminOrDriver(session: Awaited<ReturnType<typeof getSession>>) {
 }
 
 function resolveAppUrl(path: string) {
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  const baseUrl = getAppUrl();
 
   try {
     return new URL(path, baseUrl).toString();
@@ -395,6 +424,9 @@ export async function payOutstandingBookingByCardAction(
   _: ActionState,
   formData: FormData
 ): Promise<ActionState> {
+  const limited = await actionRateLimit("payment.checkout", { limit: 8, windowSeconds: 900 });
+  if (limited) return limited;
+
   const session = await getSession();
 
   if (!session || session.role !== "CUSTOMER") {
@@ -405,10 +437,9 @@ export async function payOutstandingBookingByCardAction(
   }
 
   const bookingId = String(formData.get("bookingId") ?? "");
-  const customerEmail = String(formData.get("customerEmail") ?? session.email);
   const checkout = await createPostTripCardCheckoutLink({
     bookingId,
-    customerEmail
+    customerId: session.id
   });
 
   if (checkout.url) {
@@ -425,6 +456,9 @@ export async function addTipCheckoutAction(
   _: ActionState,
   formData: FormData
 ): Promise<ActionState> {
+  const limited = await actionRateLimit("payment.tip", { limit: 8, windowSeconds: 900 });
+  if (limited) return limited;
+
   const session = await getSession();
 
   if (!session || session.role !== "CUSTOMER") {
@@ -435,11 +469,10 @@ export async function addTipCheckoutAction(
   }
 
   const bookingId = String(formData.get("bookingId") ?? "");
-  const customerEmail = String(formData.get("customerEmail") ?? session.email);
   const tipAmount = Number(formData.get("tipAmount") ?? 0);
   const checkout = await createTipCheckoutLink({
     bookingId,
-    customerEmail,
+    customerId: session.id,
     tipAmount
   });
 
@@ -522,7 +555,7 @@ export async function changePasswordAction(
   if (!parsed.success) {
     return {
       ok: false,
-      message: "Enter the current password and a new password with at least 8 characters."
+      message: "Use a 10+ character password with uppercase, lowercase, and a number."
     };
   }
 
@@ -534,7 +567,15 @@ export async function changePasswordAction(
   }
 
   try {
-    await changeAccountPassword(session.id, parsed.data.currentPassword, parsed.data.newPassword);
+    const updatedSession = await changeAccountPassword(
+      session.id,
+      parsed.data.currentPassword,
+      parsed.data.newPassword
+    );
+
+    if (updatedSession) {
+      await setSession(updatedSession);
+    }
 
     return {
       ok: true,
@@ -575,7 +616,7 @@ export async function deleteOwnAccountAction(
   if (!parsed.success) {
     return {
       ok: false,
-      message: "Enter your current password to confirm permanent deletion."
+      message: "Enter your current password to confirm account anonymization."
     };
   }
 
@@ -596,6 +637,12 @@ export async function requestPasswordResetAction(
   _: ActionState,
   formData: FormData
 ): Promise<ActionState> {
+  const limited = await actionRateLimit("auth.password-reset-request", {
+    limit: 4,
+    windowSeconds: 3600
+  });
+  if (limited) return limited;
+
   const parsed = forgotPasswordSchema.safeParse({
     email: formData.get("email")
   });
@@ -620,6 +667,9 @@ export async function resetPasswordAction(
   _: ActionState,
   formData: FormData
 ): Promise<ActionState> {
+  const limited = await actionRateLimit("auth.password-reset", { limit: 5, windowSeconds: 3600 });
+  if (limited) return limited;
+
   const parsed = resetPasswordSchema.safeParse({
     token: formData.get("token"),
     newPassword: formData.get("newPassword"),
@@ -629,7 +679,7 @@ export async function resetPasswordAction(
   if (!parsed.success) {
     return {
       ok: false,
-      message: "Use a valid reset link and enter a new password with at least 8 characters."
+      message: "Use a valid reset link and a 10+ character password with uppercase, lowercase, and a number."
     };
   }
 
@@ -681,7 +731,7 @@ export async function createDriverAction(
     return {
       ok: false,
       message:
-        "Enter driver name, email, mobile number, base city, and a password with at least 8 characters."
+        "Enter the driver details and a 10+ character password with uppercase, lowercase, and a number."
     };
   }
 
@@ -728,6 +778,9 @@ export async function requestQuoteAction(
   _: ActionState,
   formData: FormData
 ): Promise<ActionState> {
+  const limited = await actionRateLimit("quote.create", { limit: 6, windowSeconds: 3600 });
+  if (limited) return limited;
+
   const parsed = quoteSchema.safeParse({
     pickupDate: formData.get("pickupDate"),
     pickupTime: formData.get("pickupTime"),

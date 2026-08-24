@@ -87,6 +87,9 @@ model User {
   pendingPhone  String?
   pendingPhoneCountryIso String?
   phoneVerifiedAt DateTime?
+  sessionVersion Int              @default(1)
+  deletedAt     DateTime?
+  mustChangePassword Boolean @default(false)
   createdAt     DateTime         @default(now())
   updatedAt     DateTime         @updatedAt
   customer      CustomerProfile?
@@ -100,6 +103,8 @@ model User {
   passwordResetTokens PasswordResetToken[]
   emailVerificationTokens EmailVerificationToken[]
   phoneVerificationCodes PhoneVerificationCode[]
+
+  @@index([role, deletedAt])
 }
 
 model CustomerProfile {
@@ -196,6 +201,9 @@ model RideQuote {
   customer          User        @relation(fields: [customerId], references: [id], onDelete: Cascade)
   route             Route?      @relation(fields: [routeId], references: [id], onDelete: SetNull)
   booking           Booking?
+
+  @@index([customerId, status, pickupAt])
+  @@index([status, pickupAt])
 }
 
 model Booking {
@@ -248,6 +256,8 @@ model Booking {
   currency           String         @default("CAD")
   createdAt          DateTime       @default(now())
   updatedAt          DateTime       @updatedAt
+  cancelledAt        DateTime?
+  cancellationReason String?
   customer           User           @relation("CustomerBookings", fields: [customerId], references: [id], onDelete: Cascade)
   driver             User?          @relation("DriverAssignments", fields: [driverId], references: [id], onDelete: SetNull)
   route              Route?         @relation(fields: [routeId], references: [id], onDelete: SetNull)
@@ -257,6 +267,10 @@ model Booking {
   invoice            Invoice?
   payment            PaymentTransaction?
   notifications      Notification[]
+
+  @@index([customerId, pickupAt])
+  @@index([driverId, status, pickupAt])
+  @@index([status, pickupAt])
 }
 
 model BookingStop {
@@ -294,8 +308,22 @@ model PaymentTransaction {
   currency       String        @default("CAD")
   status         PaymentStatus
   capturedAt     DateTime?
+  refundedAt     DateTime?
+  refundedCents  Int           @default(0)
   createdAt      DateTime      @default(now())
   booking        Booking       @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@index([providerRef])
+  @@index([status, createdAt])
+}
+
+model PaymentEvent {
+  id          String   @id @default(cuid())
+  eventId     String   @unique
+  eventType   String
+  createdAt   DateTime @default(now())
+
+  @@index([createdAt])
 }
 
 model Notification {
@@ -307,9 +335,40 @@ model Notification {
   subject      String
   body         String
   sentAt       DateTime?
+  status       String              @default("QUEUED")
+  providerRef  String?
+  error        String?
+  recipient    String?
+  attemptCount Int                 @default(0)
+  lastAttemptAt DateTime?
+  nextAttemptAt DateTime?
   createdAt    DateTime            @default(now())
   booking      Booking?            @relation(fields: [bookingId], references: [id], onDelete: Cascade)
   user         User?               @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([bookingId])
+  @@index([userId, createdAt])
+  @@index([status, nextAttemptAt])
+}
+
+model RateLimitEvent {
+  id        String   @id @default(uuid()) @db.Uuid
+  scope     String
+  keyHash   String
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  @@index([scope, keyHash, createdAt(sort: Desc)])
+}
+
+model AnalyticsEvent {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name      String
+  path      String
+  value     Float?
+  rating    String?
+  createdAt DateTime @default(now())
+
+  @@index([name, createdAt])
 }
 
 model AuditLog {
@@ -321,6 +380,9 @@ model AuditLog {
   payload    Json?
   createdAt  DateTime @default(now())
   actor      User?    @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId, createdAt])
+  @@index([actorId, createdAt])
 }
 
 model PasswordResetToken {
@@ -331,6 +393,8 @@ model PasswordResetToken {
   usedAt    DateTime?
   createdAt DateTime @default(now())
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
 }
 
 model EmailVerificationToken {
@@ -343,6 +407,8 @@ model EmailVerificationToken {
   usedAt    DateTime?
   createdAt DateTime                 @default(now())
   user      User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
 }
 
 model PhoneVerificationCode {
@@ -356,4 +422,6 @@ model PhoneVerificationCode {
   usedAt          DateTime?
   createdAt       DateTime                  @default(now())
   user            User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
 }

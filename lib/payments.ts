@@ -1,6 +1,7 @@
 import "server-only";
 
 import Stripe from "stripe";
+import { getAppUrl } from "@/lib/app-config";
 
 import { createInsForgeServerClient, isInsForgeConfigured, unwrapInsForgeResult } from "@/lib/insforge";
 
@@ -94,7 +95,7 @@ export async function createCheckoutLink(params: {
   purpose?: CheckoutPurpose;
 }): Promise<CheckoutLinkResult> {
   const stripe = getStripeClient();
-  const appUrl = normalizeAppUrl(process.env.NEXT_PUBLIC_APP_URL);
+  const appUrl = normalizeAppUrl(getAppUrl());
 
   if (!stripe) {
     return {
@@ -107,7 +108,7 @@ export async function createCheckoutLink(params: {
   if (!appUrl) {
     return {
       url: null,
-      error: "NEXT_PUBLIC_APP_URL is missing or invalid. Set it to https://transferpro.insforge.site."
+      error: "The application URL is invalid. Set NEXT_PUBLIC_APP_URL to https://transferpro.ca."
     };
   }
 
@@ -244,12 +245,16 @@ export async function releaseAuthorizedBookingPayment(
 
 export async function createPostTripCardCheckoutLink(params: {
   bookingId: string;
-  customerEmail: string;
+  customerId: string;
 }) {
   const context = await loadBookingPaymentContext(params.bookingId);
 
   if (!context?.booking) {
     return { url: null, error: "Booking was not found." } satisfies CheckoutLinkResult;
+  }
+
+  if (context.booking.customerId !== params.customerId) {
+    return { url: null, error: "This booking does not belong to your account." };
   }
 
   if (context.booking.status !== "COMPLETED") {
@@ -264,7 +269,7 @@ export async function createPostTripCardCheckoutLink(params: {
     bookingId: params.bookingId,
     reference: context.booking.reference,
     amount: context.booking.totalCents / 100,
-    customerEmail: params.customerEmail,
+    customerEmail: await loadCustomerEmail(context.booking.customerId),
     lineItemName: `Transfer Pro fare settlement ${context.booking.reference}`,
     successPath: `/dashboard/bookings/${params.bookingId}/payment?fare=success`,
     cancelPath: `/dashboard/bookings/${params.bookingId}/payment?fare=cancelled`,
@@ -275,13 +280,17 @@ export async function createPostTripCardCheckoutLink(params: {
 
 export async function createTipCheckoutLink(params: {
   bookingId: string;
-  customerEmail: string;
+  customerId: string;
   tipAmount: number;
 }) {
   const context = await loadBookingPaymentContext(params.bookingId);
 
   if (!context?.booking) {
     return { url: null, error: "Booking was not found." } satisfies CheckoutLinkResult;
+  }
+
+  if (context.booking.customerId !== params.customerId) {
+    return { url: null, error: "This booking does not belong to your account." };
   }
 
   if (context.booking.status !== "COMPLETED") {
@@ -292,19 +301,33 @@ export async function createTipCheckoutLink(params: {
     return { url: null, error: "A card tip has already been recorded for this booking." };
   }
 
-  if (params.tipAmount <= 0) {
-    return { url: null, error: "Tip amount must be greater than zero." };
+  if (!Number.isFinite(params.tipAmount) || params.tipAmount < 1 || params.tipAmount > 500) {
+    return { url: null, error: "Tip amount must be between CAD 1 and CAD 500." };
   }
 
   return createCheckoutLink({
     bookingId: params.bookingId,
     reference: context.booking.reference,
     amount: params.tipAmount,
-    customerEmail: params.customerEmail,
+    customerEmail: await loadCustomerEmail(context.booking.customerId),
     lineItemName: `Driver tip ${context.booking.reference}`,
     successPath: `/dashboard/bookings/${params.bookingId}/payment?tip=success`,
     cancelPath: `/dashboard/bookings/${params.bookingId}/payment?tip=cancelled`,
     captureStrategy: "automatic",
     purpose: "TIP"
   });
+}
+
+async function loadCustomerEmail(customerId: string) {
+  const insforge = createInsForgeServerClient();
+  const customer = (await unwrapInsForgeResult(
+    insforge.database.from("User").select("email").eq("id", customerId).maybeSingle(),
+    "Load checkout customer"
+  )) as { email: string } | null;
+
+  if (!customer?.email) {
+    throw new Error("Customer email was not found.");
+  }
+
+  return customer.email;
 }

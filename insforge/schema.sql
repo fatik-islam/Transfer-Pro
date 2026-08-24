@@ -39,8 +39,13 @@ CREATE TABLE "User" (
   "pendingPhone" TEXT,
   "pendingPhoneCountryIso" TEXT,
   "phoneVerifiedAt" TIMESTAMP(3),
+  "sessionVersion" INTEGER NOT NULL DEFAULT 1,
+  "deletedAt" TIMESTAMP(3),
+  "mustChangePassword" BOOLEAN NOT NULL DEFAULT false,
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "updatedAt" TIMESTAMP(3) NOT NULL,
+  "cancelledAt" TIMESTAMP(3),
+  "cancellationReason" TEXT,
   CONSTRAINT "User_pkey" PRIMARY KEY ("id")
 );
 
@@ -217,8 +222,18 @@ CREATE TABLE "PaymentTransaction" (
   "currency" TEXT NOT NULL DEFAULT 'CAD',
   "status" "PaymentStatus" NOT NULL,
   "capturedAt" TIMESTAMP(3),
+  "refundedAt" TIMESTAMP(3),
+  "refundedCents" INTEGER NOT NULL DEFAULT 0,
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT "PaymentTransaction_pkey" PRIMARY KEY ("id")
+);
+
+CREATE TABLE "PaymentEvent" (
+  "id" TEXT NOT NULL,
+  "eventId" TEXT NOT NULL,
+  "eventType" TEXT NOT NULL,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "PaymentEvent_pkey" PRIMARY KEY ("id")
 );
 
 CREATE TABLE "Notification" (
@@ -230,6 +245,13 @@ CREATE TABLE "Notification" (
   "subject" TEXT NOT NULL,
   "body" TEXT NOT NULL,
   "sentAt" TIMESTAMP(3),
+  "status" TEXT NOT NULL DEFAULT 'QUEUED',
+  "providerRef" TEXT,
+  "error" TEXT,
+  "recipient" TEXT,
+  "attemptCount" INTEGER NOT NULL DEFAULT 0,
+  "lastAttemptAt" TIMESTAMP(3),
+  "nextAttemptAt" TIMESTAMP(3),
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT "Notification_pkey" PRIMARY KEY ("id")
 );
@@ -243,6 +265,24 @@ CREATE TABLE "AuditLog" (
   "payload" JSONB,
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT "AuditLog_pkey" PRIMARY KEY ("id")
+);
+
+CREATE TABLE "RateLimitEvent" (
+  "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+  "scope" TEXT NOT NULL,
+  "keyHash" TEXT NOT NULL,
+  "createdAt" TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT "RateLimitEvent_pkey" PRIMARY KEY ("id")
+);
+
+CREATE TABLE "AnalyticsEvent" (
+  "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+  "name" TEXT NOT NULL,
+  "path" TEXT NOT NULL,
+  "value" DOUBLE PRECISION,
+  "rating" TEXT,
+  "createdAt" TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT "AnalyticsEvent_pkey" PRIMARY KEY ("id")
 );
 
 CREATE TABLE "PasswordResetToken" (
@@ -294,9 +334,29 @@ CREATE UNIQUE INDEX "Booking_quoteId_key" ON "Booking"("quoteId");
 CREATE UNIQUE INDEX "Invoice_number_key" ON "Invoice"("number");
 CREATE UNIQUE INDEX "Invoice_bookingId_key" ON "Invoice"("bookingId");
 CREATE UNIQUE INDEX "PaymentTransaction_bookingId_key" ON "PaymentTransaction"("bookingId");
+CREATE UNIQUE INDEX "PaymentEvent_eventId_key" ON "PaymentEvent"("eventId");
 CREATE UNIQUE INDEX "PasswordResetToken_tokenHash_key" ON "PasswordResetToken"("tokenHash");
 CREATE UNIQUE INDEX "EmailVerificationToken_tokenHash_key" ON "EmailVerificationToken"("tokenHash");
 CREATE UNIQUE INDEX "PhoneVerificationCode_codeHash_key" ON "PhoneVerificationCode"("codeHash");
+CREATE INDEX "User_role_deletedAt_idx" ON "User"("role", "deletedAt");
+CREATE INDEX "RideQuote_customerId_status_pickupAt_idx" ON "RideQuote"("customerId", "status", "pickupAt");
+CREATE INDEX "RideQuote_status_pickupAt_idx" ON "RideQuote"("status", "pickupAt");
+CREATE INDEX "Booking_customerId_pickupAt_idx" ON "Booking"("customerId", "pickupAt");
+CREATE INDEX "Booking_driverId_status_pickupAt_idx" ON "Booking"("driverId", "status", "pickupAt");
+CREATE INDEX "Booking_status_pickupAt_idx" ON "Booking"("status", "pickupAt");
+CREATE INDEX "PaymentTransaction_providerRef_idx" ON "PaymentTransaction"("providerRef");
+CREATE INDEX "PaymentTransaction_status_createdAt_idx" ON "PaymentTransaction"("status", "createdAt");
+CREATE INDEX "PaymentEvent_createdAt_idx" ON "PaymentEvent"("createdAt");
+CREATE INDEX "Notification_bookingId_idx" ON "Notification"("bookingId");
+CREATE INDEX "Notification_userId_createdAt_idx" ON "Notification"("userId", "createdAt");
+CREATE INDEX "Notification_status_nextAttemptAt_idx" ON "Notification"("status", "nextAttemptAt");
+CREATE INDEX "RateLimitEvent_scope_keyHash_createdAt_idx" ON "RateLimitEvent"("scope", "keyHash", "createdAt" DESC);
+CREATE INDEX "AnalyticsEvent_name_createdAt_idx" ON "AnalyticsEvent"("name", "createdAt" DESC);
+CREATE INDEX "AuditLog_entityType_entityId_createdAt_idx" ON "AuditLog"("entityType", "entityId", "createdAt");
+CREATE INDEX "AuditLog_actorId_createdAt_idx" ON "AuditLog"("actorId", "createdAt");
+CREATE INDEX "PasswordResetToken_userId_expiresAt_idx" ON "PasswordResetToken"("userId", "expiresAt");
+CREATE INDEX "EmailVerificationToken_userId_expiresAt_idx" ON "EmailVerificationToken"("userId", "expiresAt");
+CREATE INDEX "PhoneVerificationCode_userId_expiresAt_idx" ON "PhoneVerificationCode"("userId", "expiresAt");
 
 ALTER TABLE "CustomerProfile"
   ADD CONSTRAINT "CustomerProfile_userId_fkey"
@@ -385,3 +445,69 @@ ALTER TABLE "EmailVerificationToken"
 ALTER TABLE "PhoneVerificationCode"
   ADD CONSTRAINT "PhoneVerificationCode_userId_fkey"
   FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+ALTER TABLE "User" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "CustomerProfile" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "DriverProfile" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "Vehicle" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "Route" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "RoutePrice" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "RideQuote" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "Booking" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "BookingStop" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "Invoice" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "PaymentTransaction" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "PaymentEvent" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "Notification" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "AuditLog" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "PasswordResetToken" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "EmailVerificationToken" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "PhoneVerificationCode" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "RateLimitEvent" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "AnalyticsEvent" ENABLE ROW LEVEL SECURITY;
+
+CREATE OR REPLACE FUNCTION public.consume_rate_limit(
+  p_scope TEXT,
+  p_key_hash TEXT,
+  p_window_seconds INTEGER,
+  p_max_requests INTEGER
+)
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  recent_count INTEGER;
+BEGIN
+  IF p_window_seconds < 1 OR p_max_requests < 1 THEN
+    RETURN false;
+  END IF;
+
+  PERFORM pg_advisory_xact_lock(hashtext(p_scope || ':' || p_key_hash));
+
+  DELETE FROM public."RateLimitEvent"
+  WHERE "scope" = p_scope
+    AND "keyHash" = p_key_hash
+    AND "createdAt" < now() - make_interval(secs => GREATEST(p_window_seconds, 86400));
+
+  SELECT count(*)::INTEGER
+  INTO recent_count
+  FROM public."RateLimitEvent"
+  WHERE "scope" = p_scope
+    AND "keyHash" = p_key_hash
+    AND "createdAt" >= now() - make_interval(secs => p_window_seconds);
+
+  IF recent_count >= p_max_requests THEN
+    RETURN false;
+  END IF;
+
+  INSERT INTO public."RateLimitEvent" ("scope", "keyHash")
+  VALUES (p_scope, p_key_hash);
+
+  RETURN true;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.consume_rate_limit(TEXT, TEXT, INTEGER, INTEGER) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.consume_rate_limit(TEXT, TEXT, INTEGER, INTEGER) TO project_admin;

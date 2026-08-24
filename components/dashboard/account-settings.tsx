@@ -73,7 +73,7 @@ export function AccountSettings({
           ) : null}
 
           {notice ? (
-            <p className="mt-4 rounded-3xl bg-emerald-500/10 px-4 py-3 text-sm text-emerald-800">
+            <p className={`mt-4 rounded-3xl px-4 py-3 text-sm ${profile.mustChangePassword ? "bg-amber-500/10 text-amber-800" : "bg-emerald-500/10 text-emerald-800"}`}>
               {notice}
             </p>
           ) : null}
@@ -99,7 +99,7 @@ export function AccountSettings({
           <p className="text-xs font-semibold uppercase tracking-[0.28em] text-copper">Password</p>
           <h2 className="mt-3 text-2xl font-semibold leading-tight text-ink md:text-3xl">Change password.</h2>
           <p className="mt-3 text-sm leading-7 text-slate">
-            If you lose access, use the reset link on the sign-in page.
+            Use at least 10 characters with uppercase, lowercase, and a number. If you lose access, use the reset link on the sign-in page.
           </p>
 
           <div className="mt-6 space-y-4">
@@ -144,11 +144,12 @@ export function AccountSettings({
             Delete account
           </p>
           <h2 className="mt-3 text-2xl font-semibold leading-tight text-ink md:text-3xl">
-            Permanently remove this {profile.role === "DRIVER" ? "driver" : "customer"} account.
+            Close and anonymize this {profile.role === "DRIVER" ? "driver" : "customer"} account.
           </h2>
           <p className="mt-3 max-w-3xl text-sm leading-7 text-slate">
-            This is permanent. Completed bookings, receipts, quotes, and saved account data linked
-            to this profile will be removed. Active rides or open quotes must be resolved first.
+            Personal contact and sign-in details are permanently anonymized. Completed bookings,
+            receipts, quotes, and financial audit records are retained for operational and legal
+            history. Active rides or open quotes must be resolved first.
           </p>
           <p className="mt-3 text-sm leading-7 text-slate">
             If you only use Google sign-in, set a password first with the password reset link, then
@@ -178,7 +179,7 @@ export function AccountSettings({
               disabled={deletePending}
               className="bg-rose-600 text-white hover:bg-rose-700 hover:shadow-quiet"
             >
-              {deletePending ? "Deleting..." : "Delete account permanently"}
+              {deletePending ? "Closing account..." : "Close and anonymize account"}
             </Button>
           </div>
         </form>

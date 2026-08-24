@@ -32,14 +32,16 @@ export default async function BookPage({
   const initialVehicleSlug = vehicles.find((vehicle) => vehicle.slug === params.vehicle)?.slug;
 
   return (
-    <main className="mx-auto max-w-7xl px-5 py-16 md:px-8">
-      <SectionHeading
-        eyebrow="Book direct"
-        title="Choose your route, lock the fare, and confirm in minutes."
-        body="Search any address, use current location, or drop a map pin. Pricing stays dynamic, but the booking experience should still feel calm, clear, and premium."
-      />
+    <main className="mx-auto max-w-7xl px-5 py-8 md:px-8 md:py-16">
+      <div className="hidden md:block">
+        <SectionHeading
+          eyebrow="Book direct"
+          title="Choose your route, lock the fare, and confirm in minutes."
+          body="Search any address, use current location, or drop a map pin. Pricing stays dynamic, but the booking experience should still feel calm, clear, and premium."
+        />
+      </div>
 
-      <div className="mt-10">
+      <div className="md:mt-10">
         <BookingWizard
           vehicles={vehicles}
           initialVehicleSlug={initialVehicleSlug}

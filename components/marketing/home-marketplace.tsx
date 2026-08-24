@@ -2,7 +2,17 @@
 
 import type { Route } from "next";
 import Link from "next/link";
-import { ArrowRightLeft, CarFront, Clock3, LoaderCircle, MapPinned, PlaneTakeoff } from "lucide-react";
+import {
+  ArrowRightLeft,
+  CarFront,
+  Clock3,
+  LoaderCircle,
+  MapPinned,
+  MessageCircleMore,
+  PlaneTakeoff,
+  ShieldCheck,
+  Sparkles
+} from "lucide-react";
 import { startTransition, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
@@ -198,25 +208,25 @@ const modeCopy: Record<
 > = {
   ride: {
     label: "Ride",
-    title: "Ride pricing from any pickup to any drop-off.",
+    title: "A private car, a clear fare, and a journey arranged around you.",
     pickupPlaceholder: "From: any address, airport, hotel, or place",
     destinationPlaceholder: "To: any address, airport, hotel, or place"
   },
   airport: {
     label: "Airport",
-    title: "Airport transfers without locking the customer to presets.",
+    title: "Flight-aware airport pickup with direct driver communication.",
     pickupPlaceholder: "From: airport, terminal, hotel, or place",
     destinationPlaceholder: "To: hotel, villa, office, or place"
   },
   intercity: {
     label: "Intercity",
-    title: "Long-distance rides stay fully customer-defined.",
+    title: "Quiet, door-to-door intercity travel without the handoffs.",
     pickupPlaceholder: "From: city, address, airport, or place",
     destinationPlaceholder: "To: city, address, airport, or place"
   },
   hourly: {
     label: "Per hour",
-    title: "Hourly chauffeur bookings should still start from real points.",
+    title: "A chauffeur on your schedule, with room for plans to change.",
     pickupPlaceholder: "Start point: address, hotel, airport, or place",
     destinationPlaceholder: "End point or final area"
   }
@@ -376,11 +386,14 @@ export function HomeMarketplace({
 
   return (
     <>
-      <section className="hero-map relative isolate overflow-hidden border-b border-white/10 text-cloud">
+      <section className="hero-map premium-hero relative isolate overflow-hidden border-b border-white/10 text-cloud">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_110%,rgba(0,0,0,0.55),transparent_38%)]" />
+        <div className="premium-route-line" aria-hidden="true" />
+        <div className="premium-glow premium-glow-left" aria-hidden="true" />
+        <div className="premium-glow premium-glow-right" aria-hidden="true" />
 
         <div className="relative z-10 mx-auto max-w-7xl px-4 pb-10 pt-6 md:px-8 md:pb-20 md:pt-10">
-          <div className="flex justify-center">
+          <div className="premium-reveal flex justify-center">
             <div className="glass-panel-dark liquid-outline grid w-full max-w-[22rem] grid-cols-2 gap-2 rounded-[2rem] p-2 md:inline-flex md:w-auto md:max-w-none md:flex-wrap md:items-center md:justify-center md:gap-2 md:rounded-full md:p-1.5">
               {[
                 { id: "ride", label: "Ride", icon: CarFront },
@@ -414,20 +427,25 @@ export function HomeMarketplace({
             </div>
           </div>
 
-          <div className="mx-auto mt-8 max-w-3xl text-center md:mt-12 md:max-w-4xl">
+          <div className="premium-reveal premium-delay-1 mx-auto mt-7 max-w-3xl text-center md:mt-12 md:max-w-4xl">
             <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-copper md:text-sm md:tracking-[0.34em]">
               Book directly with {brand.name}
             </p>
-            <h1 className="text-balance mx-auto mt-4 max-w-[12ch] font-display text-[2.8rem] leading-[0.92] sm:text-[3.35rem] md:mt-6 md:max-w-none md:text-[5.7rem] md:leading-[0.9]">
-              Private rides with a driver your regular customers can trust.
+            <h1 className="text-balance mx-auto mt-4 max-w-[12ch] font-display text-[2.65rem] leading-[0.94] sm:text-[3.35rem] md:mt-6 md:max-w-none md:text-[5.45rem] md:leading-[0.9]">
+              Private journeys, personally driven.
             </h1>
             <p className="mx-auto mt-4 max-w-[38rem] text-[1rem] leading-7 text-cloud/74 md:mt-6 md:max-w-3xl md:text-lg md:leading-8">
-              {modeCopy[mode].title} Search any pickup, use current location, or drop exact pins on the map. Guest booking is the default; accounts are only for repeat customers who want saved history.
+              {modeCopy[mode].title} Choose any pickup and destination, then lock the fare before you travel.
             </p>
+            <div className="mt-5 hidden items-center justify-center gap-3 text-xs font-semibold uppercase tracking-[0.15em] text-cloud/82 sm:flex">
+              <span className="premium-trust-pill"><ShieldCheck className="h-4 w-4 text-copper" /> Locked fares</span>
+              <span className="premium-trust-pill"><MessageCircleMore className="h-4 w-4 text-copper" /> Direct contact</span>
+              <span className="premium-trust-pill"><Sparkles className="h-4 w-4 text-copper" /> Personal service</span>
+            </div>
           </div>
 
-          <div className="mx-auto mt-8 max-w-5xl md:mt-10">
-            <div className="glass-panel-strong liquid-outline rounded-[1.8rem] p-3 text-ink md:rounded-[2rem] md:p-4">
+          <div className="premium-reveal premium-delay-2 mx-auto mt-7 max-w-5xl md:mt-9">
+            <div className="premium-booking-shell glass-panel-strong liquid-outline rounded-[1.8rem] p-3 text-ink md:rounded-[2rem] md:p-4">
               <div className="grid gap-0 md:grid-cols-[1fr_auto_1fr] md:gap-3 md:items-center">
                 <div className="min-w-0 pb-3 md:pb-0">
                   <LocationField
@@ -580,7 +598,7 @@ export function HomeMarketplace({
                 <Button
                   type="button"
                   onClick={() => startTransition(() => void navigateFromHero())}
-                  className="h-12 w-full border-0 bg-[#1f7f62] px-6 text-white shadow-[0_24px_70px_rgba(18,79,63,0.32)] hover:bg-[#17664f] md:h-11 md:w-fit md:min-w-[11rem] md:justify-center"
+                  className="premium-cta h-12 w-full border-0 bg-[#1f7f62] px-6 text-white shadow-[0_24px_70px_rgba(18,79,63,0.32)] hover:bg-[#17664f] md:h-11 md:w-fit md:min-w-[11rem] md:justify-center"
                 >
                   {offerBusy ? (
                     <>
@@ -762,13 +780,13 @@ export function HomeMarketplace({
             </div>
           </div>
 
-          <p className="mx-auto mt-6 max-w-3xl text-center text-base leading-7 text-cloud/84 md:mt-8 md:max-w-4xl md:text-2xl md:leading-relaxed md:text-cloud/86">
-            Dynamic pickup and drop-off selection is the default. Search by place, detect the current location, or pin exact points before locking the fare.
+          <p className="premium-reveal premium-delay-3 mx-auto mt-6 max-w-3xl text-center text-base leading-7 text-cloud/84 md:mt-8 md:max-w-4xl md:text-xl md:leading-relaxed md:text-cloud/86">
+            No marketplace handoffs. One accountable service from pickup planning to arrival.
           </p>
 
           <div className="mx-auto mt-5 grid max-w-5xl gap-2 sm:grid-cols-2 md:mt-6 md:flex md:flex-wrap md:items-center md:justify-center md:gap-3">
             {marketplaceAdvantages.map((advantage) => (
-              <div key={advantage} className="glass-panel whitespace-nowrap rounded-full px-4 py-2 text-center text-sm text-ink">
+              <div key={advantage} className="premium-mini-card glass-panel whitespace-nowrap rounded-full px-4 py-2 text-center text-sm text-ink">
                 {advantage}
               </div>
             ))}
@@ -776,12 +794,12 @@ export function HomeMarketplace({
         </div>
       </section>
 
-      <section id="offers" className="deferred-section mx-auto max-w-7xl px-4 py-14 md:px-8 md:py-20">
+      <section id="offers" className="premium-section deferred-section mx-auto max-w-7xl px-4 py-14 md:px-8 md:py-20">
         <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div className="max-w-2xl">
             <p className="text-xs font-semibold uppercase tracking-[0.32em] text-copper">Served routes</p>
             <h2 className="mt-3 font-display text-[2.35rem] leading-[0.98] text-ink md:text-5xl md:leading-none">
-              Local pages only for rides Transfer Pro actually serves.
+              Signature routes, delivered with local care.
             </h2>
           </div>
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
@@ -799,7 +817,7 @@ export function HomeMarketplace({
             <Link
               key={offer.title}
               href={offer.href}
-              className="glass-panel flex flex-col rounded-[1.7rem] p-5 transition hover:-translate-y-0.5 md:rounded-[2rem] md:p-6"
+              className="premium-card glass-panel flex flex-col rounded-[1.7rem] p-5 md:rounded-[2rem] md:p-6"
             >
               <div className="flex items-start justify-between gap-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.28em] text-copper">{offer.eyebrow}</p>
@@ -825,16 +843,16 @@ export function HomeMarketplace({
         </div>
       </section>
 
-      <section id="destinations" className="deferred-section mx-auto max-w-7xl px-4 py-6 md:px-8 md:py-8">
+      <section id="destinations" className="premium-section deferred-section mx-auto max-w-7xl px-4 py-6 md:px-8 md:py-8">
         <div className="section-surface px-5 py-7 md:px-10 md:py-10">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div className="max-w-2xl">
               <p className="text-xs font-semibold uppercase tracking-[0.32em] text-copper">Popular locations</p>
               <h2 className="mt-3 font-display text-[2.2rem] leading-[0.98] text-ink md:text-5xl md:leading-none">
-                Browse transfer demand by location cluster.
+                Begin with where you are going.
               </h2>
               <p className="mt-4 text-base leading-7 text-slate">
-                These tabs are inspiration and high-performing route groups. They should help discovery, not prevent someone from entering a completely different pickup or drop-off.
+                Explore popular journeys, or enter any address for a route planned around you.
               </p>
             </div>
             <Link href="/routes" className="text-sm font-semibold uppercase tracking-[0.18em] text-ink underline">
@@ -873,7 +891,7 @@ export function HomeMarketplace({
                   <Link
                     key={`${route.origin}-${route.destination}`}
                     href={route.href}
-                    className="glass-panel rounded-[1.45rem] p-4 transition hover:-translate-y-0.5 md:rounded-[1.7rem] md:p-5"
+                    className="premium-card glass-panel rounded-[1.45rem] p-4 md:rounded-[1.7rem] md:p-5"
                   >
                     <p className="text-xs uppercase tracking-[0.18em] text-slate">From</p>
                     <p className="mt-1 text-lg font-semibold text-ink md:text-xl">{route.origin}</p>
@@ -896,12 +914,12 @@ export function HomeMarketplace({
         </div>
       </section>
 
-      <section id="classes" className="deferred-section mx-auto max-w-7xl px-4 py-14 md:px-8 md:py-20">
+      <section id="classes" className="premium-section deferred-section mx-auto max-w-7xl px-4 py-14 md:px-8 md:py-20">
         <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div className="max-w-2xl">
             <p className="text-xs font-semibold uppercase tracking-[0.32em] text-copper">Vehicle classes</p>
             <h2 className="mt-3 font-display text-[2.2rem] leading-[0.98] text-ink md:text-5xl md:leading-none">
-              Match each journey to a cabin that makes sense.
+              A calm cabin for every kind of journey.
             </h2>
           </div>
           <Link href="/fleet" className="text-sm font-semibold uppercase tracking-[0.18em] text-ink underline">
@@ -911,7 +929,7 @@ export function HomeMarketplace({
 
         <div className="mt-8 grid gap-4 md:mt-10 md:grid-cols-2 md:gap-5 xl:grid-cols-4">
           {vehicles.map((vehicle) => (
-            <article key={vehicle.id} className="glass-panel rounded-[1.65rem] p-5 md:rounded-[2rem] md:p-6">
+            <article key={vehicle.id} className="premium-card glass-panel rounded-[1.65rem] p-5 md:rounded-[2rem] md:p-6">
               <p className="text-xs font-semibold uppercase tracking-[0.28em] text-copper">{vehicle.classLabel}</p>
               <h3 className="mt-4 text-[1.9rem] font-semibold leading-tight text-ink md:text-3xl">{vehicle.name}</h3>
               <p className="mt-4 text-sm leading-7 text-slate">{vehicle.summary}</p>
@@ -925,18 +943,18 @@ export function HomeMarketplace({
         </div>
       </section>
 
-      <section className="deferred-section mx-auto max-w-7xl px-4 py-6 md:px-8 md:py-8">
+      <section className="premium-section deferred-section mx-auto max-w-7xl px-4 py-6 md:px-8 md:py-8">
         <div className="section-surface px-5 py-7 md:px-10 md:py-10">
           <div className="max-w-2xl">
             <p className="text-xs font-semibold uppercase tracking-[0.32em] text-copper">Traveler reviews</p>
             <h2 className="mt-3 font-display text-[2.2rem] leading-[0.98] text-ink md:text-5xl md:leading-none">
-              Trust grows when passengers can compare, confirm, and come back.
+              Service remembered for the right reasons.
             </h2>
           </div>
 
           <div className="mt-8 grid gap-4 md:mt-10 md:gap-5 lg:grid-cols-3">
             {travelerReviews.map((review) => (
-              <article key={review.name} className="glass-panel rounded-[1.65rem] p-5 md:rounded-[2rem] md:p-6">
+              <article key={review.name} className="premium-card glass-panel rounded-[1.65rem] p-5 md:rounded-[2rem] md:p-6">
                 <p className="text-sm leading-8 text-ink">“{review.quote}”</p>
                 <div className="mt-6 border-t border-slate/10 pt-4">
                   <p className="font-semibold text-ink">{review.name}</p>

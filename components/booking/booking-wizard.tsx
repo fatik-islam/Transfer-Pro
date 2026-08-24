@@ -408,8 +408,8 @@ export function BookingWizard({
                 </p>
               </div>
 
-              <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] lg:items-center">
-                <div className="glass-panel rounded-[1.8rem] px-4 py-3">
+              <div className="relative z-30 grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] lg:items-center">
+                <div className="glass-panel relative z-20 rounded-[1.8rem] px-4 py-3 focus-within:z-[80]">
                   <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.28em] text-slate/70">
                     Pickup
                   </p>
@@ -435,7 +435,7 @@ export function BookingWizard({
                   <ArrowRightLeft className="h-5 w-5" />
                 </button>
 
-                <div className="glass-panel rounded-[1.8rem] px-4 py-3">
+                <div className="glass-panel relative z-10 rounded-[1.8rem] px-4 py-3 focus-within:z-[80]">
                   <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.28em] text-slate/70">
                     Drop-off
                   </p>

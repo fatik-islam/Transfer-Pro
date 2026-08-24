@@ -36,6 +36,49 @@ function haversineDistanceKm(origin: LocationCoordinates, destination: LocationC
 }
 
 async function resolveDistance(input: TransferPricingInput): Promise<DistanceResult> {
+  const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY?.trim();
+
+  if (googleMapsApiKey) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 4000);
+
+    try {
+      const response = await fetch("https://routes.googleapis.com/directions/v2:computeRoutes", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Goog-Api-Key": googleMapsApiKey,
+          "X-Goog-FieldMask": "routes.distanceMeters"
+        },
+        body: JSON.stringify({
+          origin: { location: { latLng: input.pickupCoordinates } },
+          destination: { location: { latLng: input.destinationCoordinates } },
+          travelMode: "DRIVE",
+          routingPreference: "TRAFFIC_UNAWARE",
+          units: "METRIC"
+        }),
+        signal: controller.signal,
+        cache: "no-store"
+      });
+
+      if (response.ok) {
+        const payload = (await response.json()) as { routes?: Array<{ distanceMeters?: number }> };
+        const distanceMeters = payload.routes?.[0]?.distanceMeters;
+
+        if (distanceMeters && Number.isFinite(distanceMeters)) {
+          return {
+            distanceKm: Number((distanceMeters / 1000).toFixed(1)),
+            distanceSource: "routing"
+          };
+        }
+      }
+    } catch {
+      // Fall through to the secondary road-routing provider.
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 2500);
 
@@ -119,7 +162,14 @@ export function parseCoordinatesString(value?: string | null) {
   const lat = Number(latValue);
   const lng = Number(lngValue);
 
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+  if (
+    !Number.isFinite(lat) ||
+    !Number.isFinite(lng) ||
+    lat < -90 ||
+    lat > 90 ||
+    lng < -180 ||
+    lng > 180
+  ) {
     return null;
   }
 
@@ -134,6 +184,27 @@ export async function getTransferPricing(
   const urgentService = isUrgentPickup(input.pickupAt);
   const usaRide = isUsRide(input);
   const pickupAt = normalizePickupAt(input.pickupAt);
+
+  if (distanceSource === "estimated") {
+    return {
+      pricingMode: "CONTACT",
+      currency: PRICING_CURRENCY,
+      distanceKm,
+      distanceSource,
+      region: usaRide ? "USA" : "GENERAL",
+      tierLabel: "Route review",
+      ratePerKm: null,
+      pickupFee: 0,
+      oneWaySubtotal: null,
+      roundTrip: returnTrip,
+      roundTripDiscount: 0,
+      urgentService,
+      urgentSurcharge: 0,
+      total: null,
+      pickupAt,
+      contactReason: "Live road routing is temporarily unavailable, so this trip needs manual fare confirmation."
+    };
+  }
 
   if (distanceKm > 1000) {
     return {

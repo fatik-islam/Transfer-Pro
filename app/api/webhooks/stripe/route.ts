@@ -3,7 +3,12 @@ import { NextResponse } from "next/server";
 
 import { queueNotification } from "@/lib/notifications";
 import { getStripeClient } from "@/lib/payments";
-import { applyStripePaymentUpdate, applyTipPaymentUpdate } from "@/lib/repository";
+import {
+  applyStripePaymentUpdate,
+  applyTipPaymentUpdate,
+  claimStripeEvent,
+  releaseStripeEvent
+} from "@/lib/repository";
 
 function readMetadataValue(metadata: Stripe.Metadata | null | undefined, key: string) {
   const value = metadata?.[key];
@@ -32,7 +37,7 @@ function readPaymentPurpose(metadata: Stripe.Metadata | null | undefined) {
     return value;
   }
 
-  return "FARE_CAPTURE";
+  throw new Error("Stripe event is missing valid payment metadata.");
 }
 
 export async function POST(request: Request) {
@@ -41,11 +46,13 @@ export async function POST(request: Request) {
   const stripe = getStripeClient();
 
   if (!stripe || !process.env.STRIPE_WEBHOOK_SECRET || !signature) {
-    return NextResponse.json({
-      received: true,
-      mode: "demo"
-    });
+    return NextResponse.json(
+      { error: "Stripe webhook verification is not configured." },
+      { status: 503 }
+    );
   }
+
+  let claimedEventId: string | null = null;
 
   try {
     const event = stripe.webhooks.constructEvent(
@@ -53,6 +60,13 @@ export async function POST(request: Request) {
       signature,
       process.env.STRIPE_WEBHOOK_SECRET
     );
+    const claimed = await claimStripeEvent(event.id, event.type);
+
+    if (!claimed) {
+      return NextResponse.json({ received: true, duplicate: true, eventType: event.type });
+    }
+
+    claimedEventId = event.id;
 
     switch (event.type) {
       case "checkout.session.completed":
@@ -317,6 +331,14 @@ export async function POST(request: Request) {
         });
     }
   } catch (error) {
+    if (claimedEventId) {
+      try {
+        await releaseStripeEvent(claimedEventId);
+      } catch (releaseError) {
+        console.error("Failed to release Stripe event claim", releaseError);
+      }
+    }
+
     return NextResponse.json(
       {
         error: error instanceof Error ? error.message : "Webhook validation failed."

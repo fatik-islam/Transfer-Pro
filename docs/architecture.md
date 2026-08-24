@@ -30,27 +30,27 @@ The product is intentionally original in branding and interface direction. It us
 - Server components render most pages to keep the public site fast and reduce client bundle size.
 - Client components are limited to interactive forms and account actions.
 - Server actions handle auth, booking creation, and quote submission from forms.
-- Route handlers expose JSON endpoints for pricing, bookings, quotes, checkout, and Stripe webhooks.
+- Route handlers expose pricing and signed provider callbacks. Checkout creation is server-action-only so clients cannot submit prices.
 
 ### Data Layer
 
 - `InsForge` is the primary persistence layer and backend control plane.
 - `lib/repository.ts` isolates read and write logic so the UI can remain agnostic to whether the app is in demo-data mode or InsForge-backed mode.
-- Demo mode keeps the app explorable even before infrastructure is provisioned.
-- This workspace is linked to an InsForge backend project, and `insforge/schema.sql` plus `insforge/seed.sql` are applied through `npx @insforge/cli`.
-- `@insforge/sdk` is used from the Next.js server runtime for live reads and writes against the transfer tables while preserving the same domain model.
+- Demo mode keeps local development explorable before infrastructure is provisioned; it is never the production data path.
+- This workspace is linked to an InsForge backend project. Ordered SQL migrations under `insforge/migrations/` are used for live changes.
+- `@insforge/sdk` is used only from the Next.js server runtime with `INSFORGE_API_KEY`. Database RLS blocks public roles on every application table.
 
 ### Auth
 
-- JWT cookie auth is implemented with `jose`.
+- JWT cookie auth is implemented with `jose`, a mandatory production secret, HTTP-only cookies, and database-backed session-version checks.
 - Accounts support three roles: `ADMIN`, `DRIVER`, `CUSTOMER`.
 - `requireSession()` gates dashboard access server-side.
-- The structure is ready for MFA, magic links, or external identity providers if needed.
+- Password changes, resets, role changes, account anonymization, and secret rotation revoke existing sessions.
 
 ### Payments and Notifications
 
-- `lib/payments.ts` creates Stripe Checkout sessions when keys are available.
-- `/api/webhooks/stripe` is wired to validate incoming Stripe signatures.
+- `lib/payments.ts` creates Stripe Checkout sessions from stored server-side booking totals.
+- `/api/webhooks/stripe` requires Stripe signatures and metadata, validates amount/currency, and deduplicates event IDs.
 - `lib/notifications.ts` is the abstraction point for email, SMS, or WhatsApp fan-out.
 
 ## Schema Summary
@@ -129,8 +129,8 @@ This schema is designed so pricing, assignment, invoice history, and notificatio
 2. Customer opens `/book`, selects a known route and vehicle.
 3. Form submits through a server action.
 4. Repository creates or reuses a customer record.
-5. Booking record is created with price, passenger details, and pickup metadata.
-6. Stripe Checkout URL is generated when payment credentials exist.
+5. Booking record is created with a signed server-verified fare, passenger details, and pickup metadata.
+6. Stripe Checkout URL is generated server-side from the stored booking total when payment credentials exist.
 7. Notification abstraction queues booking confirmation messages.
 8. Booking appears in admin and driver dashboards.
 
@@ -175,10 +175,10 @@ This structure keeps the application deployable as a single web service while st
 - Route handler boundaries make it straightforward to expose selected capabilities to native apps, partner portals, or external dispatch systems later.
 - Notifications, payments, and invoicing are intentionally separated from page components so they can move to async jobs when volume grows.
 
-## Recommended Production Follow-Ups
+## Future enhancements
 
-- Add background jobs for reminder and completion notifications
+- Move provider delivery and retry handling into background jobs
 - Convert invoice records into downloadable PDF artifacts
 - Add driver mobile actions for trip status updates and navigation launch
 - Add route-specific rich content and FAQ blocks for local SEO scale
-- Add analytics, experimentation, and conversion-event tracking
+- Add consent-aware analytics, experimentation, and conversion-event tracking

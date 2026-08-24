@@ -11,11 +11,9 @@ import { PasswordInput } from "@/components/ui/password-input";
 import { initialActionState } from "@/lib/action-state";
 
 export function SignInForm({
-  notice,
-  showDemoCredentials = false
+  notice
 }: {
   notice?: { text: string; tone: "success" | "warning" };
-  showDemoCredentials?: boolean;
 }) {
   const [state, formAction, pending] = useActionState(signInAction, initialActionState);
 
@@ -65,14 +63,6 @@ export function SignInForm({
         {pending ? "Signing in..." : "Sign in"}
       </Button>
 
-      {showDemoCredentials ? (
-        <div className="page-card-subtle rounded-[1.5rem] p-4 text-sm text-slate">
-          <p className="font-semibold text-ink">Demo credentials</p>
-          <p className="mt-2">Admin: admin@transferpro.test / demo1234</p>
-          <p>Driver: driver@transferpro.test / demo1234</p>
-          <p>Customer: customer@transferpro.test / demo1234</p>
-        </div>
-      ) : null}
     </form>
   );
 }

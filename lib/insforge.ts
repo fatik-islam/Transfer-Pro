@@ -3,35 +3,40 @@ import "server-only";
 import { createClient } from "@insforge/sdk";
 
 function readConfig() {
-  const baseUrl = process.env.INSFORGE_URL ?? process.env.NEXT_PUBLIC_INSFORGE_URL;
-  const anonKey = process.env.INSFORGE_ANON_KEY ?? process.env.NEXT_PUBLIC_INSFORGE_ANON_KEY;
+  const baseUrl = process.env.INSFORGE_URL;
+  const serverKey = process.env.INSFORGE_API_KEY;
 
   return {
     baseUrl,
-    anonKey
+    serverKey
   };
 }
 
 export function isInsForgeConfigured() {
-  const { baseUrl, anonKey } = readConfig();
-  return Boolean(baseUrl && anonKey);
+  const { baseUrl, serverKey } = readConfig();
+  const configured = Boolean(baseUrl && serverKey);
+
+  if (!configured && process.env.NODE_ENV === "production") {
+    throw new Error("Transfer Pro database configuration is unavailable.");
+  }
+
+  return configured;
 }
 
 export function createInsForgeServerClient(accessToken?: string) {
-  const { baseUrl, anonKey } = readConfig();
+  const { baseUrl, serverKey } = readConfig();
 
-  if (!baseUrl || !anonKey) {
+  if (!baseUrl || !serverKey) {
     throw new Error(
-      "InsForge is not configured. Set INSFORGE_URL and INSFORGE_ANON_KEY in .env.local."
+      "InsForge is not configured. Set INSFORGE_URL and INSFORGE_API_KEY in the server environment."
     );
   }
 
   return createClient({
     baseUrl,
-    anonKey,
+    anonKey: serverKey,
     edgeFunctionToken: accessToken,
-    isServerMode: true,
-    autoRefreshToken: false
+    isServerMode: true
   });
 }
 

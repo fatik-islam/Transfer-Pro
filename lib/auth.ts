@@ -18,16 +18,14 @@ import {
   normalizePhoneCountryIso,
   splitPhoneForField
 } from "@/lib/phone";
-import { demoUsers } from "@/lib/site-data";
+import { getAppUrl } from "@/lib/app-config";
+import { demoUsers, isDemoAuthEnabled } from "@/lib/demo-users";
 import type { AccountProfile, SessionUser, UserRole } from "@/lib/types";
 
 const COOKIE_NAME = "transpro_session";
 const EMAIL_VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000;
 const PHONE_VERIFICATION_TTL_MS = 15 * 60 * 1000;
 const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000;
-const secret = new TextEncoder().encode(
-  process.env.JWT_SECRET ?? "transpro-development-secret-change-me"
-);
 const googleJwks = createRemoteJWKSet(new URL("https://www.googleapis.com/oauth2/v3/certs"));
 
 export const sessionCookieName = COOKIE_NAME;
@@ -49,6 +47,9 @@ type DbUser = {
   pendingPhone: string | null;
   pendingPhoneCountryIso: string | null;
   phoneVerifiedAt: string | null;
+  sessionVersion: number;
+  deletedAt: string | null;
+  mustChangePassword: boolean;
   createdAt?: string;
   updatedAt?: string;
 };
@@ -94,12 +95,26 @@ function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
 }
 
-function buildSessionUser(user: Pick<DbUser, "id" | "role" | "email" | "name">): SessionUser {
+function jwtSecret() {
+  const value = process.env.JWT_SECRET?.trim();
+
+  if (!value && process.env.NODE_ENV === "production") {
+    throw new Error("JWT_SECRET must be configured in production.");
+  }
+
+  return new TextEncoder().encode(value || "transpro-local-development-only");
+}
+
+function buildSessionUser(
+  user: Pick<DbUser, "id" | "role" | "email" | "name" | "sessionVersion" | "mustChangePassword">
+): SessionUser {
   return {
     id: user.id,
     role: user.role,
     email: user.email,
-    name: user.name
+    name: user.name,
+    sessionVersion: user.sessionVersion,
+    mustChangePassword: user.mustChangePassword
   };
 }
 
@@ -114,21 +129,29 @@ export function buildSessionCookieOptions() {
 }
 
 export async function createSessionToken(user: SessionUser) {
-  return new SignJWT({ role: user.role, email: user.email, name: user.name })
+  return new SignJWT({
+    role: user.role,
+    email: user.email,
+    name: user.name,
+    sessionVersion: user.sessionVersion,
+    mustChangePassword: user.mustChangePassword
+  })
     .setProtectedHeader({ alg: "HS256" })
     .setSubject(user.id)
     .setIssuedAt()
     .setExpirationTime("7d")
-    .sign(secret);
+    .sign(jwtSecret());
 }
 
 export async function verifyToken(token: string) {
-  const result = await jwtVerify(token, secret);
+  const result = await jwtVerify(token, jwtSecret());
   return {
     id: result.payload.sub as string,
     role: result.payload.role as UserRole,
     email: result.payload.email as string,
-    name: result.payload.name as string
+    name: result.payload.name as string,
+    sessionVersion: Number(result.payload.sessionVersion ?? 0),
+    mustChangePassword: result.payload.mustChangePassword === true
   } satisfies SessionUser;
 }
 
@@ -141,7 +164,24 @@ export async function getSession() {
   }
 
   try {
-    return await verifyToken(token);
+    const tokenUser = await verifyToken(token);
+
+    if (!isInsForgeConfigured()) {
+      return tokenUser;
+    }
+
+    const currentUser = await loadUserById(tokenUser.id);
+
+    if (
+      !currentUser ||
+      currentUser.deletedAt ||
+      currentUser.sessionVersion !== tokenUser.sessionVersion ||
+      currentUser.role !== tokenUser.role
+    ) {
+      return null;
+    }
+
+    return buildSessionUser(currentUser);
   } catch {
     return null;
   }
@@ -176,7 +216,12 @@ async function loadUserByEmail(email: string) {
 
   const insforge = createInsForgeServerClient();
   return (await unwrapInsForgeResult(
-    insforge.database.from("User").select("*").eq("email", normalizeEmail(email)).maybeSingle(),
+    insforge.database
+      .from("User")
+      .select("*")
+      .eq("email", normalizeEmail(email))
+      .is("deletedAt", null)
+      .maybeSingle(),
     "Load user by email"
   )) as DbUser | null;
 }
@@ -192,6 +237,7 @@ async function loadUserByPendingEmail(email: string) {
       .from("User")
       .select("*")
       .eq("pendingEmail", normalizeEmail(email))
+      .is("deletedAt", null)
       .maybeSingle(),
     "Load user by pending email"
   )) as DbUser | null;
@@ -204,7 +250,12 @@ async function loadUserByGoogleSub(googleSub: string) {
 
   const insforge = createInsForgeServerClient();
   return (await unwrapInsForgeResult(
-    insforge.database.from("User").select("*").eq("googleSub", googleSub).maybeSingle(),
+    insforge.database
+      .from("User")
+      .select("*")
+      .eq("googleSub", googleSub)
+      .is("deletedAt", null)
+      .maybeSingle(),
     "Load user by Google subject"
   )) as DbUser | null;
 }
@@ -216,7 +267,7 @@ async function loadUserById(userId: string) {
 
   const insforge = createInsForgeServerClient();
   return (await unwrapInsForgeResult(
-    insforge.database.from("User").select("*").eq("id", userId).maybeSingle(),
+    insforge.database.from("User").select("*").eq("id", userId).is("deletedAt", null).maybeSingle(),
     "Load user by id"
   )) as DbUser | null;
 }
@@ -226,8 +277,7 @@ function hashToken(token: string) {
 }
 
 function resolveAppUrl(path: string) {
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-  return new URL(path, baseUrl).toString();
+  return new URL(path, getAppUrl()).toString();
 }
 
 function buildGoogleRedirectUri() {
@@ -258,10 +308,10 @@ async function ensureCustomerProfile(userId: string) {
   }
 
   await unwrapInsForgeResult(
-    insforge.database.from("CustomerProfile").insert({
+    insforge.database.from("CustomerProfile").insert([{
       id: `customer_${crypto.randomUUID()}`,
       userId
-    }),
+    }]),
     "Create customer profile"
   );
 }
@@ -322,14 +372,14 @@ async function queueEmailVerification(params: {
   );
 
   await unwrapInsForgeResult(
-    insforge.database.from("EmailVerificationToken").insert({
+    insforge.database.from("EmailVerificationToken").insert([{
       id: `verify_${crypto.randomUUID()}`,
       userId: params.userId,
       tokenHash: hashToken(token),
       email: normalizeEmail(params.email),
       purpose: params.purpose,
       expiresAt
-    }),
+    }]),
     "Create email verification token"
   );
 
@@ -421,7 +471,7 @@ async function queuePhoneVerificationCode(params: {
   );
 
   await unwrapInsForgeResult(
-    insforge.database.from("PhoneVerificationCode").insert({
+    insforge.database.from("PhoneVerificationCode").insert([{
       id: `phone_code_${crypto.randomUUID()}`,
       userId: params.userId,
       codeHash: hashToken(`${params.userId}:${code}`),
@@ -429,7 +479,7 @@ async function queuePhoneVerificationCode(params: {
       phoneCountryIso: params.phoneCountryIso,
       purpose: params.purpose,
       expiresAt
-    }),
+    }]),
     "Create phone verification code"
   );
 
@@ -580,7 +630,7 @@ export async function authenticateUser(
   }
 
   const demo = demoUsers.find(
-    (item) => item.email === normalizedEmail && item.password === password
+    (item) => isDemoAuthEnabled() && item.email === normalizedEmail && item.password === password
   );
 
   if (!demo) {
@@ -593,7 +643,9 @@ export async function authenticateUser(
       id: demo.id,
       role: demo.role,
       email: demo.email,
-      name: demo.name
+      name: demo.name,
+      sessionVersion: 1,
+      mustChangePassword: false
     }
   };
 }
@@ -609,12 +661,18 @@ export async function registerCustomer(params: {
   const normalizedPhone = buildStoredPhone(params);
 
   if (!isInsForgeConfigured()) {
+    if (!isDemoAuthEnabled()) {
+      throw new Error("Account registration requires a configured development backend.");
+    }
+
     return {
       autoSignInUser: {
         id: `demo_${normalizedEmail}`,
         role: "CUSTOMER" as const,
         email: normalizedEmail,
-        name: params.name
+        name: params.name,
+        sessionVersion: 1,
+        mustChangePassword: false
       },
       email: normalizedEmail,
       phone: normalizedPhone.phone,
@@ -676,7 +734,7 @@ export async function registerCustomer(params: {
   const userId = `user_${crypto.randomUUID()}`;
 
   await unwrapInsForgeResult(
-    insforge.database.from("User").insert({
+    insforge.database.from("User").insert([{
       id: userId,
       role: "CUSTOMER",
       name: params.name,
@@ -686,7 +744,7 @@ export async function registerCustomer(params: {
       phoneVerifiedAt: now,
       passwordHash,
       updatedAt: now
-    }),
+    }]),
     "Create customer"
   );
 
@@ -707,6 +765,10 @@ export async function registerCustomer(params: {
 
 export async function getAccountProfile(userId: string): Promise<AccountProfile | null> {
   if (!isInsForgeConfigured()) {
+    if (!isDemoAuthEnabled()) {
+      return null;
+    }
+
     const demo = demoUsers.find((item) => item.id === userId);
 
     return demo
@@ -718,7 +780,8 @@ export async function getAccountProfile(userId: string): Promise<AccountProfile 
           phone: demo.phone,
           phoneCountryIso: splitPhoneForField(demo.phone).countryIso,
           emailVerifiedAt: new Date().toISOString(),
-          phoneVerifiedAt: new Date().toISOString()
+          phoneVerifiedAt: new Date().toISOString(),
+          mustChangePassword: false
         }
       : null;
   }
@@ -740,7 +803,8 @@ export async function getAccountProfile(userId: string): Promise<AccountProfile 
     pendingPhoneCountryIso: undefined,
     pendingEmail: user.pendingEmail ?? undefined,
     emailVerifiedAt: user.emailVerifiedAt,
-    phoneVerifiedAt: user.phoneVerifiedAt
+    phoneVerifiedAt: user.phoneVerifiedAt,
+    mustChangePassword: user.mustChangePassword
   };
 }
 
@@ -751,6 +815,10 @@ export async function updateAccountProfile(
   const normalizedPhone = buildStoredPhone(params);
 
   if (!isInsForgeConfigured()) {
+    if (!isDemoAuthEnabled()) {
+      throw new Error("Profile updates require a configured development backend.");
+    }
+
     const demo = demoUsers.find((item) => item.id === userId);
 
     return {
@@ -758,7 +826,9 @@ export async function updateAccountProfile(
         id: userId,
         role: demo?.role ?? "CUSTOMER",
         email: normalizeEmail(params.email),
-        name: params.name
+        name: params.name,
+        sessionVersion: 1,
+        mustChangePassword: false
       } satisfies SessionUser,
       emailChangeRequested: false,
       pendingEmail: undefined,
@@ -842,16 +912,22 @@ export async function changeAccountPassword(
   const passwordHash = await bcrypt.hash(newPassword, 10);
   const insforge = createInsForgeServerClient();
 
-  await unwrapInsForgeResult(
+  const updated = (await unwrapInsForgeResult(
     insforge.database
       .from("User")
       .update({
         passwordHash,
+        sessionVersion: user.sessionVersion + 1,
+        mustChangePassword: false,
         updatedAt: new Date().toISOString()
       })
-      .eq("id", userId),
+      .eq("id", userId)
+      .select("*")
+      .single(),
     "Change password"
-  );
+  )) as DbUser;
+
+  return buildSessionUser(updated);
 }
 
 export async function deleteOwnAccount(userId: string, password: string) {
@@ -932,9 +1008,28 @@ export async function deleteOwnAccount(userId: string, password: string) {
     }
   }
 
+  const deletedAt = new Date().toISOString();
+  const replacementPassword = await bcrypt.hash(randomBytes(32).toString("hex"), 10);
+
   await unwrapInsForgeResult(
-    insforge.database.from("User").delete().eq("id", user.id),
-    "Delete account"
+    insforge.database
+      .from("User")
+      .update({
+        email: `deleted+${user.id}@transferpro.invalid`,
+        pendingEmail: null,
+        googleSub: null,
+        passwordHash: replacementPassword,
+        name: "Deleted account",
+        phone: null,
+        phoneCountryIso: null,
+        pendingPhone: null,
+        pendingPhoneCountryIso: null,
+        sessionVersion: user.sessionVersion + 1,
+        deletedAt,
+        updatedAt: deletedAt
+      })
+      .eq("id", user.id),
+    "Anonymize account"
   );
 }
 
@@ -966,12 +1061,12 @@ export async function requestPasswordReset(email: string) {
   );
 
   await unwrapInsForgeResult(
-    insforge.database.from("PasswordResetToken").insert({
+    insforge.database.from("PasswordResetToken").insert([{
       id: `reset_${crypto.randomUUID()}`,
       userId: user.id,
       tokenHash: hashToken(token),
       expiresAt
-    }),
+    }]),
     "Create password reset token"
   );
 
@@ -1015,12 +1110,19 @@ export async function resetPasswordWithToken(token: string, newPassword: string)
 
   const passwordHash = await bcrypt.hash(newPassword, 10);
   const usedAt = new Date().toISOString();
+  const user = await loadUserById(record.userId);
+
+  if (!user) {
+    throw new Error("The account for this reset link is no longer available.");
+  }
 
   await unwrapInsForgeResult(
     insforge.database
       .from("User")
       .update({
         passwordHash,
+        sessionVersion: user.sessionVersion + 1,
+        mustChangePassword: false,
         updatedAt: usedAt
       })
       .eq("id", record.userId),
@@ -1367,7 +1469,7 @@ export async function signInWithGoogleCode(code: string, codeVerifier: string) {
   const created = (await unwrapInsForgeResult(
     insforge.database
       .from("User")
-      .insert({
+      .insert([{
         id: userId,
         role: "CUSTOMER",
         name: identity.name,
@@ -1376,7 +1478,7 @@ export async function signInWithGoogleCode(code: string, codeVerifier: string) {
         googleSub: identity.sub,
         emailVerifiedAt: now,
         updatedAt: now
-      })
+      }])
       .select("*")
       .single(),
     "Create Google customer"

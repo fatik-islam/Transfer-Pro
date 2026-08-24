@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Menu, X } from "lucide-react";
 
 import { signOutAction } from "@/app/actions";
@@ -47,10 +47,6 @@ export function DashboardShell({
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
   const items = navByRole[user.role];
-
-  useEffect(() => {
-    setMenuOpen(false);
-  }, [pathname]);
 
   function renderNavLinks(compact = false) {
     return items.map((item) => {

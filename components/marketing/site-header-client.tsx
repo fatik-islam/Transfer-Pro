@@ -2,8 +2,7 @@
 
 import Link from "next/link";
 import { Menu, X } from "lucide-react";
-import { useEffect, useState } from "react";
-import { usePathname } from "next/navigation";
+import { useState } from "react";
 
 import { TransferProLogo } from "@/components/branding/transfer-pro-logo";
 
@@ -15,26 +14,21 @@ const publicLinks = [
 ] as const;
 
 export function SiteHeaderClient({ hasSession }: { hasSession: boolean }) {
-  const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
 
-  useEffect(() => {
-    setMenuOpen(false);
-  }, [pathname]);
-
   return (
-    <header className="sticky top-0 z-40 border-b border-white/20 bg-[#f6f1e9]/70 backdrop-blur-2xl">
+    <header className="premium-header sticky top-0 z-40 border-b border-white/20 bg-[#f6f1e9]/78 backdrop-blur-xl">
       <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3 md:gap-6 md:px-8 md:py-4">
         <Link href="/" className="text-ink">
           <TransferProLogo compact className="max-w-[15rem]" taglineClassName="hidden sm:block" />
         </Link>
 
-        <nav className="glass-panel hidden items-center gap-2 rounded-full px-3 py-2 text-sm text-slate md:flex">
+        <nav className="premium-nav hidden items-center gap-1 rounded-full px-2 py-1.5 text-sm text-slate md:flex">
           {publicLinks.map((item) => (
             <Link
               key={item.href}
               href={item.href}
-              className="rounded-full px-4 py-2 transition hover:bg-white/35 hover:text-ink"
+              className="rounded-full px-4 py-2 transition duration-300 hover:bg-white/55 hover:text-ink"
             >
               {item.label}
             </Link>
@@ -45,7 +39,7 @@ export function SiteHeaderClient({ hasSession }: { hasSession: boolean }) {
           {hasSession ? (
             <Link
               href="/dashboard"
-              className="rounded-full border border-[#102133] bg-[#102133] px-5 py-3 text-sm font-semibold tracking-[0.08em] text-[#f4efe7] transition hover:bg-[#183049]"
+              className="premium-header-cta rounded-full border border-[#102133] bg-[#102133] px-5 py-3 text-sm font-semibold tracking-[0.08em] text-[#f4efe7] transition hover:bg-[#183049]"
             >
               Dashboard
             </Link>
@@ -56,7 +50,7 @@ export function SiteHeaderClient({ hasSession }: { hasSession: boolean }) {
               </Link>
               <Link
                 href="/book"
-                className="rounded-full border border-[#102133] bg-[#102133] px-5 py-3 text-sm font-semibold tracking-[0.08em] text-[#f4efe7] transition hover:bg-[#183049]"
+                className="premium-header-cta rounded-full border border-[#102133] bg-[#102133] px-5 py-3 text-sm font-semibold tracking-[0.08em] text-[#f4efe7] transition hover:bg-[#183049]"
               >
                 Book now
               </Link>
@@ -97,7 +91,7 @@ export function SiteHeaderClient({ hasSession }: { hasSession: boolean }) {
                   <Link
                     href="/dashboard"
                     onClick={() => setMenuOpen(false)}
-                    className="flex items-center justify-center rounded-full border border-[#102133] bg-[#102133] px-5 py-3 text-sm font-semibold tracking-[0.08em] text-[#f4efe7] transition hover:bg-[#183049]"
+                    className="premium-header-cta flex items-center justify-center rounded-full border border-[#102133] bg-[#102133] px-5 py-3 text-sm font-semibold tracking-[0.08em] text-[#f4efe7] transition hover:bg-[#183049]"
                   >
                     Dashboard
                   </Link>
@@ -113,7 +107,7 @@ export function SiteHeaderClient({ hasSession }: { hasSession: boolean }) {
                     <Link
                       href="/book"
                       onClick={() => setMenuOpen(false)}
-                      className="flex items-center justify-center rounded-full border border-[#102133] bg-[#102133] px-5 py-3 text-sm font-semibold tracking-[0.08em] text-[#f4efe7] transition hover:bg-[#183049]"
+                      className="premium-header-cta flex items-center justify-center rounded-full border border-[#102133] bg-[#102133] px-5 py-3 text-sm font-semibold tracking-[0.08em] text-[#f4efe7] transition hover:bg-[#183049]"
                     >
                       Book now
                     </Link>
